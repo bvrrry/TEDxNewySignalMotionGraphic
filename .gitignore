@@ -1,0 +1,10 @@
+node_modules/
+*.mp4
+*.wav
+stills/
+s_*/
+frames/
+debug*.js
+dbg*.js
+nan.js
+*_v1.*
