@@ -345,8 +345,8 @@ const REAL_R = { x0: -2800, x1: 1300, z0: -1150, z1: 1500 };
 const inReal = (x, z, m = 0) => x > REAL_R.x0 + m && x < REAL_R.x1 - m && z > REAL_R.z0 + m && z < REAL_R.z1 - m;
 {
   const outer = [];
-  for (let i = 0; i < 9000 && outer.length < 5200; i++) {
-    const r = 1300 * Math.pow(16000 / 1300, rng()), th = rng() * Math.PI * 2;
+  for (let i = 0; i < 16000 && outer.length < 8500; i++) {
+    const r = 1300 * Math.pow(38000 / 1300, rng()), th = rng() * Math.PI * 2;
     const x = CITY_C.x + Math.cos(th) * r, z = CITY_C.z + Math.sin(th) * r;
     if (inReal(x, z, 120) || !isLand(x, z) || inNob(x, z)) continue;
     outer.push(nodeAt(x, z));
@@ -398,10 +398,10 @@ const roadMat = new THREE.ShaderMaterial({
     float x = uFront - vD;
     vec3 red = vec3(0.831,0.0,0.03);
     vec3 col = vec3(0.012,0.006,0.007);
-    float headW = 25.0 + max(uFront, 0.0)*0.02;
+    float headW = 25.0 + min(max(uFront, 0.0), 1500.0)*0.02;
     float head = exp(-pow(x/headW, 2.0));
     float lit = step(0.0, x);
-    col += red * lit * (0.38 + 0.6*exp(-max(x,0.0)/(150.0 + max(uFront, 0.0)*0.05)));
+    col += red * lit * (0.55 + 0.45*exp(-max(x,0.0)/150.0));
     col += vec3(1.0,0.35,0.35) * head * 0.8 * smoothstep(8.0, 60.0, length(vW-uCamPos));
     col *= edge * (0.25 + 0.75*smoothstep(6.0, 70.0, length(vW-uCamPos)));
     float fogK = 1.0 - exp(-pow(length(vW-uCamPos)*uFogDensity, 2.0));
@@ -928,7 +928,7 @@ const webMat = new THREE.ShaderMaterial({
 // ================================================================ camera + fronts
 const ALT_KEYS = T.alt.map(([t, a]) => [t, Math.log(a)]);
 function altAt(t) { return Math.exp(track(ALT_KEYS, t)); }
-const webFront = t => t < T.web0 ? -1 : 0.55 * altAt(t) / 1000;
+const webFront = t => t < T.web0 ? -1 : (T.frontK || 0.6) * altAt(t) / 1000;
 // street front: metres from the orb along the streets. It is a fixed fraction of how far the camera has risen since the impact, so it accelerates exactly as smoothly as the zoom does (no ramps, no jumps)
 const cityFront = t => { if (t <= T.impact) return -1e9; return Math.max(0, (T.frontK || 0.6) * (altAt(t) - altAt(T.impact))) - IMPACT_OFF; };
 const arrival = {};
@@ -1126,7 +1126,7 @@ function frame(t) {
   cityCam.near = Math.max(0.08, camH * 0.02); cityCam.far = Math.max(9000, camH * 12); cityCam.updateProjectionMatrix();
   U.uCamPos.value.copy(cityCam.position);
   U.uFogDensity.value = 1 / Math.max(1500, camH * 9);
-  U.uWidthScale.value = Math.max(1, camH / 260);
+  U.uWidthScale.value = Math.max(1, camH / 2200);
   sky.position.copy(cityCam.position); sky.scale.setScalar(cityCam.far * 0.8 / 1000);
   // ---------------- orb
   const op = orbPos(t), oy = orbHeight(t);

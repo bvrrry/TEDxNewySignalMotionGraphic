@@ -41,7 +41,7 @@ These came out of review and should carry forward:
 - **Lighting:** a modest ambient lift so the baths, sea and buildings read, without losing the night mood. Windows are warm amber with a few red-orange ones, and glow a little.
 - **The spread is a sprawl** over the whole country (not a letter shape). It must reach the coasts before the world arcs begin.
 - **Outro:** planet and background fade first, the text holds 1 to 2 s, then everything fades to black. The text stays up longer than it did originally.
-- **Audio:** three cinematic takes to choose from. Take A (`audio.py`) is dark and drone-led (sub drone, saw pads, choir, braam hits, subtle beat). Take B (`audio_b.py`) is more musical: a felt-piano arpeggio in A minor, string pads, taiko-style drums building to the impact, staccato strings through the rise, lifting to A major at the title. Take C (`audio_c.py`) is a trailer-style build in D minor lifting to D major: a driving cello ostinato from the orb's birth, celesta bells, taiko into the impact, brass swells into the title. All three have bells on each city and a long reverb. The soundtrack is finalised last, after the picture is locked.
+- **Audio: take B is the chosen one** (piano-led, A minor lifting to A major). Three takes were made; A and C are kept as alternates. Take A (`audio.py`) is dark and drone-led (sub drone, saw pads, choir, braam hits, subtle beat). Take B (`audio_b.py`) is more musical: a felt-piano arpeggio in A minor, string pads, taiko-style drums building to the impact, staccato strings through the rise, lifting to A major at the title. Take C (`audio_c.py`) is a trailer-style build in D minor lifting to D major: a driving cello ostinato from the orb's birth, celesta bells, taiko into the impact, brass swells into the title. All three have bells on each city and a long reverb. The soundtrack is finalised last, after the picture is locked.
 
 ## Where things live
 
@@ -49,7 +49,7 @@ All timings are in `timelines.json` (per cut); `main.js` reads them, so re-timin
 
 - `approachEnd`, `appRamp`: the glide and its speed profile (ease up, cruise, long ease down). The path is `APP_PTS` in `main.js`.
 - `gather0`, `gatherFull`, `hover0`, `launch`, `impact`: the orb forms, rises and drops.
-- `alt`, `frontK`, `zoom0`: the single continuous rise (`alt` is camera height in metres; tilt, swing and aim all follow height; the zoom launches the instant of the impact), and the street lighting, which is `frontK` times how far the camera has risen, so it accelerates exactly as smoothly as the zoom (`zoom0` is only used by the audio).
+- `alt`, `frontK`, `zoom0`: the single continuous rise (the zoom accelerates steadily through the crossfade to the globe, with no slow patch) (`alt` is camera height in metres; tilt, swing and aim all follow height; the zoom launches the instant of the impact), and the street lighting, which is `frontK` times how far the camera has risen, so it accelerates exactly as smoothly as the zoom (`zoom0` is only used by the audio). `frontK` is kept near 0.5 so the leading edge of the signal stays on screen and keeps expanding right through the crossfade; the country-wide web uses the same value.
 - `xfade`, `web0`, `worldKm`: city to globe, when the web starts, and how far it must spread before world arcs may start.
 - `globeLat` / `globeLon`: where the globe camera looks over time.
 - `dim`, `ret0`, `land`, `logo`: globe dims, orb returns, lands as the i-dot, logo fades in.
