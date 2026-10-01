@@ -608,13 +608,13 @@ const FORT = V3(412, 0, -522); FORT.y = terrainH(FORT.x, FORT.z);
 for (const b of BREAKS) city.add(new THREE.Mesh(new THREE.ExtrudeGeometry(new THREE.Shape(b.map(([x, z]) => new THREE.Vector2(x, -z))), { depth: 3, bevelEnabled: false }).rotateX(-Math.PI / 2), darkMat));
 // Newcastle Ocean Baths + Canoe Pool
 {
-  const poolMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.02, 0.058, 0.075) });
-  const rimMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.2, 0.19, 0.18) });
+  const poolMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.011, 0.031, 0.04) });
+  const rimMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.11, 0.105, 0.1) });
   for (const [x, z, w, d, a, round] of [[368, -98, 52, 26, -0.33, false], [262, -58, 56, 56, 0, true]]) {
     const g = new THREE.Group(); g.position.set(x, groundY(x, z) + 0.25, z); g.rotation.y = -a; city.add(g);
     g.add(new THREE.Mesh(round ? new THREE.CircleGeometry(w / 2, 56).rotateX(-Math.PI / 2) : new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), poolMat));
     if (round) { const wall = new THREE.Mesh(new THREE.CylinderGeometry(w / 2 + 0.6, w / 2 + 0.6, 0.9, 56, 1, true), rimMat); wall.material = rimMat.clone(); wall.material.side = THREE.DoubleSide; wall.position.y = 0.2; g.add(wall); }
-    const pg = new THREE.Mesh(new THREE.PlaneGeometry(w * 1.35, d * 1.35).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: TEX_SOFT, color: new THREE.Color(0.35, 0.6, 0.75), transparent: true, opacity: 0.42, blending: THREE.AdditiveBlending, depthWrite: false })); pg.position.y = 0.4; pg.renderOrder = 2; g.add(pg);
+    const pg = new THREE.Mesh(new THREE.PlaneGeometry(w * 1.35, d * 1.35).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: TEX_SOFT, color: new THREE.Color(0.3, 0.5, 0.62), transparent: true, opacity: 0.17, blending: THREE.AdditiveBlending, depthWrite: false })); pg.position.y = 0.4; pg.renderOrder = 2; g.add(pg);
     if (!round) for (const [px, pz, bw, bd] of [[0, -d / 2, w + 1, 1], [0, d / 2, w + 1, 1], [-w / 2, 0, 1, d], [w / 2, 0, 1, d]]) { const r = new THREE.Mesh(new THREE.BoxGeometry(bw, 0.9, bd), rimMat); r.position.set(px, 0.2, pz); g.add(r); }
   }
   const neon = new THREE.Mesh(new THREE.BoxGeometry(36, 0.3, 0.3), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.831 * 2.5, 0, 0.05) })); neon.position.set(307, groundY(307, -110) + 6.5, -104); neon.rotation.y = 0.35; city.add(neon);
@@ -981,13 +981,14 @@ const APP_PTS = (() => { // moving in from the sea toward Nobbys lighthouse and 
   for (const [d, h] of [[220, 16], [130, 10], [70, 7.5], [30, 6]]) pts.push(END_POS.clone().add(CAMDIR.clone().multiplyScalar(d)).setY(h));
   pts.push(END_POS.clone()); return pts; })();
 const appCurve0 = new THREE.CatmullRomCurve3(APP_PTS, false, 'centripetal');
+appCurve0.arcLengthDivisions = 6000; // fine distance table: the default (200) makes the speed wobble
 // the whole route is resampled evenly and averaged over about 140 m so it never twists; the first and last stretches stay exactly as designed
 const appCurve = (() => {
   const n = Math.round(appCurve0.getLength() / 10), P = []; for (let i = 0; i <= n; i++) P.push(appCurve0.getPointAt(i / n));
   const S = P.map((p, i) => { let w = 0; const a = new THREE.Vector3();
     for (let k = -30; k <= 30; k++) { const g = Math.exp(-(k * k) / (2 * 14 * 14)); a.addScaledVector(P[clamp(i + k, 0, n)], g); w += g; }
     a.multiplyScalar(1 / w); const u = i / n; return a.lerp(p, smoother(0.8, 0.95, u)).lerp(p, 1 - smoother(0.0, 0.04, u)); });
-  return new THREE.CatmullRomCurve3(S.filter((_, i) => i % 3 === 0 || i === n), false, 'centripetal'); })();
+  const c = new THREE.CatmullRomCurve3(S.filter((_, i) => i % 3 === 0 || i === n), false, 'centripetal'); c.arcLengthDivisions = 6000; return c; })();
 const appLen = appCurve.getLength();
 const FOCUS = V3(-800, 15, -300); // the locus the arc sweeps round: the camera goes wide but keeps looking in at it
 const NOB_TOP = V3(NOB.x, NOB.y + 14, NOB.z);
@@ -1014,11 +1015,15 @@ const PHI_KEYS = [[Math.log(ALT0), Math.atan(END_D / ALT0) / D2R], [Math.log(6),
 const AZ0 = Math.atan2(CAMDIR.z, CAMDIR.x), AZ1 = Math.PI / 2; // swings east over the sea, then round to the south (north-up, as the globe expects)
 function riseShot(t) {
   const V = altAt(t), lv = Math.log(V);
-  const D = V * Math.tan(track(PHI_KEYS, lv) * D2R);
+  // one shared progress value (log of the height climbed) drives the tilt, the swing round and the drift of the aim together, so the zoom and the rotation are a single move
+  const P = clamp((lv - Math.log(2.2)) / (Math.log(14000) - Math.log(2.2)));
+  const e = Math.pow(smoother(0, 1, P), 1.7);
+  const phi = lerp(Math.atan(END_D / ALT0) / D2R, 8, Math.pow(e, 0.9));
+  const D = V * Math.tan(phi * D2R);
   const aimFar = V3(-700, 0, -150).lerp(CITY_CENTRE, smoother(Math.log(3000), Math.log(25000), lv));
-  const tgt = ORB_AIM.clone().lerp(aimFar, smoother(Math.log(25), Math.log(6000), lv));
-  const azK = smoother(Math.log(25), Math.log(6000), lv), az = lerp(AZ0, AZ1, azK);
-  return { pos: tgt.clone().add(V3(Math.cos(az) * D, V, Math.sin(az) * D)), tgt, fov: lerp(40, 44, azK) };
+  const tgt = ORB_AIM.clone().lerp(aimFar, e);
+  const az = lerp(AZ0, AZ1, e);
+  return { pos: tgt.clone().add(V3(Math.cos(az) * D, V, Math.sin(az) * D)), tgt, fov: lerp(40, 44, e) };
 }
 const cityShot = t => window.__camOverride || (t < T.approachEnd ? approachShot(t) : riseShot(t));
 function globeShot(t) {

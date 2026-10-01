@@ -25,3 +25,5 @@ Read README.md first (purpose, goals, beats, creative decisions). Key facts for 
 - Check changes with low-res stills before long renders, then look at the PNGs (`python sheet.py <dir> <out.png> <cols>` makes a contact sheet).
 - When patching `main.js` from a script, write the patch to a file; shell quoting mangles GLSL backticks.
 - SwiftShader gotchas already hit: `exp()` of a huge argument multiplied by 0 gives NaN and bloom spreads it over the whole frame (the composite pass sanitises NaN, but keep shader maths clamped); very large single triangles mis-rasterise depth at some resolutions, so keep big planes subdivided; screen-space strip materials must be `DoubleSide`.
+- Route lookups: curves used for camera paths need `arcLengthDivisions` raised (we use 6000); the default of 200 makes speed wobble and shows as a hitch at slow speeds.
+- Baths are deliberately dim so they blend with the dark coast; keep them subtle.
