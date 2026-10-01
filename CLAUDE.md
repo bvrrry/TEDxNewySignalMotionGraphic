@@ -30,3 +30,13 @@ Read README.md first (purpose, goals, beats, creative decisions). Key facts for 
 - Signal lines must look the same all the way through: road ribbon width scales with camera height only as `camH / 2200` (a faster scale made the lines thick and blurry from ~26 s), lit roads all settle to one level (no long fade behind the front), and the generated suburbs reach 38 km so the sprawl is still going when we cross to the globe.
 - Short cut: it is the long cut from the punch-out onwards, so it starts mid-story (the crossfade is already under way at t=0, so the first visible frame is the zoom-blur). `impact`, `launch` and the gather times are set far in the past (negative) so no orb effects play, `alt` starts high so the city is already lit (`frontK` x height), and `approachEnd` is 0. Keep its beats in step with the long cut when the globe or outro changes.
 - Lines are drawn at a minimum on-screen width (`uLinePx`) and junction flares fade with height, so every red line looks the same at every height. Camera moves at the drop are averaged over a short window (`riseShot`) so the zoom and rotation start together and ease in.
+
+## Session handoff (2026-10-01)
+
+Read the "Status and resume here" section at the end of README.md first. Short version: both cuts exist and are previewed (`previews/preview long.mp4`, `previews/preview short.mp4`); branch `long-cut-v2` holds all the work; the remaining job is Will's final sign-off and then the 4K renders. The long cut uses audio take B (`audio_b.py`); the short cut uses `audio_short.py`.
+
+Working with Will on this project:
+- He gives precise, visual feedback; apply it exactly and re-check with stills and `camlog.js`. Calm, smooth, cinematic: never fast, jerky or twisty. Verify numerically (camera turn rate and acceleration) before claiming a camera fix.
+- Do not reshape the real coastline. Do not make the night look much brighter. Keep every red signal line looking identical at every height.
+- Commit to the `long-cut-v2` branch and push after each round, update README/CLAUDE.md, and open the preview videos for him when done.
+- A built-in safety check blocks bulk `rm` with globs; delete named files with PowerShell `Remove-Item -LiteralPath` when he asks for clean-ups, and do not try to work round a block.

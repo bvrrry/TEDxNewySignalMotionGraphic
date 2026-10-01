@@ -37,7 +37,7 @@ These came out of review and should carry forward:
 - **Camera:** slow, smooth, one wide arc that keeps its focus on the locus of the arc (`FOCUS`); never fast or jerky. It may stay a little off the coast at the headlands.
 - **No people.** The orb forms from the ground. (An earlier mannequin was dropped.)
 - **Geography follows the real coastline, exactly.** The coast, Nobbys Head and breakwall, Nobbys Beach, Fort Scratchley, the baths and Newcastle Beach are as in the OpenStreetMap data. Edits to the coast in earlier rounds (carving a plateau into sea, submerging the Nobbys peninsula) made the scale and geography wrong and were reverted: do not reshape the coastline. What is kept: the Nobbys peninsula has no cottages, lights or small structures; Shortland Esplanade runs along the real coast from the fort to Nobbys Beach as a plain road that lights up with the signal (class 8: no lamps, no buildings).
-- **Street lights are real-looking lamps on poles** along the beach footpath and the wall esplanade, not floating glow orbs.
+- **Street lights are real-looking lamps on poles** along the beach footpath (none out on the sand near the orb) and a few at the baths promenade, not floating glow orbs. There is no retaining wall: the coast is the real OSM coast.
 - **Lighting:** a modest ambient lift so the baths, sea and buildings read, without losing the night mood. Windows are warm amber with a few red-orange ones, and glow a little.
 - **The spread is a sprawl** over the whole country (not a letter shape). It must reach the coasts before the world arcs begin.
 - **Outro:** planet and background fade first, the text holds 1 to 2 s, then everything fades to black. The text stays up longer than it did originally.
@@ -62,9 +62,9 @@ All timings are in `timelines.json` (per cut); `main.js` reads them, so re-timin
 - `main.js`: the whole scene. Land masks, terrain, OSM streets and buildings, landmarks, beach lamps and footpaths, the orb and its effects, the street front, the globe, the Australia web, world arcs, post-processing, the title overlay. `window.renderFrame(t)` renders time `t` deterministically.
 - `timelines.json`: every timing and camera key for both cuts.
 - `render.js`: puppeteer driver. Renders stills or an MP4 at any resolution and writes `events_<cut>.json` (city arrival times, arcs, world timing) for the audio.
-- `audio.py`, `audio_b.py`, `audio_c.py`, `audio_short.py`: synthesised sound designs (takes A, B and C for the long cut; the deep take for the short cut), timed from `timelines.json` and `events_<cut>.json`. Output `signal_audio_<cut>.wav`, `_b.wav` and `_c.wav`.
+- `audio.py`, `audio_b.py`, `audio_c.py`, `audio_short.py`: synthesised sound designs (takes A, B and C for the long cut; the deep take for the short cut), timed from `timelines.json` and `events_<cut>.json`. Output `signal_audio_long.wav` (A), `signal_audio_long_b.wav` (B, chosen), `signal_audio_long_c.wav` (C) and `signal_audio_short_deep.wav`.
 - `preview.html`, `start_preview.bat`: live scrub preview.
-- `probe.js`, `asciimap.js`, `speed.js`: dev tools (render from any camera with the flight path drawn; ASCII land/sea map with the path; flight speed and height profile).
+- `probe.js`, `asciimap.js`, `speed.js`, `camlog.js`: dev tools (render from any camera with the flight path drawn; ASCII land/sea map with the path; flight speed and height profile; per-moment camera speed, turn rate and turn acceleration, the one to use on any camera change).
 - `data/`: OpenStreetMap extracts (coastline, harbour, breakwalls, streets, building footprints) in local metres. Origin -32.9305, 151.7870 (Newcastle Beach); x east, z south.
 - `logo.png`, `bricolage-grotesque-latin-*.woff2`: brand assets.
 
@@ -97,17 +97,31 @@ ffmpeg -i previews/silent_short.mp4 -i signal_audio_short_deep.wav -c:v libx264 
 
 ```bash
 node render.js --cut long --w 3840 --h 2160 --gpu 1 --msaa 0 --crf 16 --out video_long_4k.mp4
-python audio.py long
-ffmpeg -i video_long_4k.mp4 -i signal_audio_long.wav -c:v copy -c:a aac -b:a 320k -shortest Signal_opener_long_4K.mp4
+python audio_b.py long          # take B is the chosen long-cut audio
+ffmpeg -i video_long_4k.mp4 -i signal_audio_long_b.wav -c:v copy -c:a aac -b:a 320k -shortest Signal_opener_long_4K.mp4
+
+# short cut (deep audio)
+node render.js --cut short --w 3840 --h 2160 --gpu 1 --msaa 0 --crf 16 --out video_short_4k.mp4
+python audio_short.py short
+ffmpeg -i video_short_4k.mp4 -i signal_audio_short_deep.wav -c:v copy -c:a aac -b:a 320k -shortest Signal_opener_short_4K.mp4
 ```
 
 Long renders can be split with `--start` / `--end` and joined with ffmpeg.
 
-## Next steps
+## Status and resume here (end of session, 2026-10-01)
 
-1. Sign off the long cut (picture, then audio).
-2. Render the long cut at 4K and mux the audio.
-3. Sign off the short cut, then render it at 4K too (same command with `--cut short`).
+**State:** both cuts are built and previewed. Work is on git branch `long-cut-v2` (pushed to https://github.com/bvrrry/TEDxNewySignalMotionGraphic; `main` still holds the first baseline and has not been merged). Latest commit: "Short cut opens on the punch-out; deep audio for the short cut; docs".
+
+**Current previews (720p, in `previews/`):** `preview long.mp4` (46.1 s, audio take B) and `preview short.mp4` (9.9 s, deep audio). `silent_long.mp4`, `silent_short.mp4` and the logs in that folder are intermediates and can be deleted. Will's scratch folders starting with an underscore in `Intro Motion Graphic\` are only test stills and can be deleted.
+
+**What was last asked and done:** the short cut now opens on the punch-out (no fade-up on the sprawl), with a deeper audio and old drafts cleared. Before that: smoother drop move (zoom and rotation start together, windowed), uniform on-screen red line width, sprawl that keeps expanding through the crossfade, baths dimmed, true coastline restored.
+
+**Next steps:**
+1. Get Will's sign-off on `preview long.mp4` and `preview short.mp4` (he had said he was "pretty much done"). Apply any last notes, using `camlog.js` for any camera change.
+2. Render both cuts at 4K (commands above; the long cut is roughly an hour on this machine's GPU) and mux audio.
+3. Optionally merge `long-cut-v2` into `main` on GitHub once approved.
+
+**Things Will has said he wants kept:** see "Creative decisions" above. Open questions: none outstanding.
 
 ## Credits
 
