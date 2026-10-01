@@ -137,11 +137,16 @@ const cLand = document.createElement('canvas'); cLand.width = cLand.height = MRE
   pathPoly(g, closed); g.fill();
   g.fillStyle = '#000'; pathPoly(g, COAST.HARBOUR); g.fill();
   g.fillStyle = '#000'; pathPoly(g, CARVE); g.fill();
+  // the wide spit between the fort and Nobbys is submerged in real life: sea, except the lighthouse hill, the fort headland and a narrow causeway between
+  g.fillStyle = '#000'; pathPoly(g, [[330, -420], [330, -1500], [2300, -1500], [2300, -420]]); g.fill();
+  const mpm = (MX1 - MX0) / MRES; g.fillStyle = '#fff'; g.strokeStyle = '#fff'; g.lineCap = 'round';
+  for (const [cx, cz, r] of [[1066, -1324, 170], [412, -522, 150]]) { g.beginPath(); g.arc(mpx(cx), mpz(cz), r / mpm, 0, Math.PI * 2); g.fill(); }
+  g.lineWidth = 26 / mpm; g.beginPath(); g.moveTo(mpx(440), mpz(-575)); g.lineTo(mpx(1066), mpz(-1324)); g.stroke();
   g.fillStyle = '#fff'; for (const b of BREAKS) { pathPoly(g, b); g.fill(); }
 }
 const BEACHES = [ // coastline stretches that are sand
   (x, z) => x > -275 && x < 70 && z > -95 && z < 150,       // Newcastle Beach
-  (x, z) => x > 560 && x < 1060 && z > -1135 && z < -690,   // Nobbys Beach
+  (x, z) => false,   // Nobbys Beach (submerged in the film)
   (x, z) => x > -1720 && x < -1240 && z > 890 && z < 1260,  // Bar Beach
   (x, z) => x < -1880 && z > 1300,                          // Merewether
   (x, z) => z < -1700 && x < 1200,                          // Stockton Beach
@@ -614,11 +619,12 @@ for (const b of BREAKS) city.add(new THREE.Mesh(new THREE.ExtrudeGeometry(new TH
 {
   const poolMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.02, 0.058, 0.075) });
   const rimMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.2, 0.19, 0.18) });
-  for (const [x, z, w, d, a] of [[368, -98, 52, 26, -0.33], [262, -58, 62, 44, -0.38]]) {
+  for (const [x, z, w, d, a, round] of [[368, -98, 52, 26, -0.33, false], [262, -58, 56, 56, 0, true]]) {
     const g = new THREE.Group(); g.position.set(x, groundY(x, z) + 0.25, z); g.rotation.y = -a; city.add(g);
-    g.add(new THREE.Mesh(new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), poolMat));
+    g.add(new THREE.Mesh(round ? new THREE.CircleGeometry(w / 2, 56).rotateX(-Math.PI / 2) : new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), poolMat));
+    if (round) { const wall = new THREE.Mesh(new THREE.CylinderGeometry(w / 2 + 0.6, w / 2 + 0.6, 0.9, 56, 1, true), rimMat); wall.material = rimMat.clone(); wall.material.side = THREE.DoubleSide; wall.position.y = 0.2; g.add(wall); }
     const pg = new THREE.Mesh(new THREE.PlaneGeometry(w * 1.35, d * 1.35).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: TEX_SOFT, color: new THREE.Color(0.35, 0.6, 0.75), transparent: true, opacity: 0.42, blending: THREE.AdditiveBlending, depthWrite: false })); pg.position.y = 0.4; pg.renderOrder = 2; g.add(pg);
-    for (const [px, pz, bw, bd] of [[0, -d / 2, w + 1, 1], [0, d / 2, w + 1, 1], [-w / 2, 0, 1, d], [w / 2, 0, 1, d]]) { const r = new THREE.Mesh(new THREE.BoxGeometry(bw, 0.9, bd), rimMat); r.position.set(px, 0.2, pz); g.add(r); }
+    if (!round) for (const [px, pz, bw, bd] of [[0, -d / 2, w + 1, 1], [0, d / 2, w + 1, 1], [-w / 2, 0, 1, d], [w / 2, 0, 1, d]]) { const r = new THREE.Mesh(new THREE.BoxGeometry(bw, 0.9, bd), rimMat); r.position.set(px, 0.2, pz); g.add(r); }
   }
   const neon = new THREE.Mesh(new THREE.BoxGeometry(36, 0.3, 0.3), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.831 * 2.5, 0, 0.05) })); neon.position.set(307, groundY(307, -110) + 6.5, -104); neon.rotation.y = 0.35; city.add(neon);
 }
@@ -964,22 +970,24 @@ GU.uNCity.value = Math.min(cityKeys.length, 48);
 const citySprites = cityKeys.map(k => { const s = glowSprite(RED_LIN, 1, 2.0); s.position.copy(ll(...CITIES[k], R * 1.001)); s.renderOrder = 4; globe.add(s); return { k, s }; });
 
 const CITY_CENTRE = V3(-900, 0, 150);
-const CAMDIR = V3(0.995, 0, -0.1).normalize();  // from the orb back out over the bay: the glide ends on this line, arriving from the east over the water
+const CAMDIR = V3(0.8, 0, 0.6).normalize();  // from the orb back out over the bay (south-east, over open water): the glide ends on this straight line
 // ---- shot 1: one slow glide in from the sea. The camera always looks along its own flight path (no pans, no turns),
 // drifts past Nobbys lighthouse, sweeps round the seaward side of Fort Scratchley and settles in front of the orb on Newcastle Beach.
 const ORB_AIM = ORB.clone().add(V3(0, 2.6, 0));
 const ALT0 = 1.5;                                                // camera height above the aim point when the glide ends
 const END_D = 14.5;                                              // ...and its distance from the orb
 const END_POS = ORB_AIM.clone().add(CAMDIR.clone().multiplyScalar(END_D)).add(V3(0, ALT0, 0));
-const APP_PTS = (() => { // a single arc: a straight chord from the sea off Nobbys to the beach, bowed out to sea around the headland and the baths, descending late
-  const P0 = V3(1330, 0, -1385), cx = END_POS.x - P0.x, cz = END_POS.z - P0.z, cl = Math.hypot(cx, cz), px = cz / cl, pz = -cx / cl, BOW = 400; // px,pz: perpendicular, towards the sea
+const APP_PTS = (() => { // one wide arc from the sea off Nobbys, bowed out round the headland and the baths, then a short straight run in to the orb over the bay
+  const P0 = V3(1260, 0, -1335), T1 = END_POS.clone().add(CAMDIR.clone().multiplyScalar(340)), cx = T1.x - P0.x, cz = T1.z - P0.z, cl = Math.hypot(cx, cz), px = cz / cl, pz = -cx / cl, BOW = 340;
   const pts = [];
-  for (let k = 0; k <= 40; k++) { const u = k / 40, b = BOW * Math.sin(Math.PI * Math.pow(u, 3.2));
-    pts.push(V3(P0.x + cx * u + px * b, END_POS.y + (84 - END_POS.y) * (1 - smoother(0.4, 1, u)), P0.z + cz * u + pz * b)); }
-  pts[40] = END_POS.clone(); return pts; })();
+  for (let k = 0; k <= 34; k++) { const u = k / 34, b = BOW * Math.sin(Math.PI * Math.pow(u, 2.4));
+    pts.push(V3(P0.x + cx * u + px * b, 28 + (84 - 28) * (1 - smoother(0.35, 1, u)), P0.z + cz * u + pz * b)); }
+  for (const [d, h] of [[220, 16], [130, 10], [70, 7.5], [30, 6]]) pts.push(END_POS.clone().add(CAMDIR.clone().multiplyScalar(d)).setY(h));
+  pts.push(END_POS.clone()); return pts; })();
 const appCurve = new THREE.CatmullRomCurve3(APP_PTS, false, 'centripetal');
 const appLen = appCurve.getLength();
-const LOOK_AHEAD = 240; // metres of flight path the camera looks ahead along
+const LOOK_AHEAD = 240; // metres of flight path the camera looks ahead along (only matters for the first moments)
+const FOCUS = V3(-400, 15, -290); // the locus the arc sweeps round: the camera goes wide but keeps looking in at it, then the aim drifts onto the orb
 // flight timing from a velocity profile: ease up over appRamp[0] s, cruise, then a long ease down to a stop over appRamp[1] s before approachEnd
 const APP_TAB = (() => { const n = Math.max(1, Math.round(T.approachEnd * 200)), tab = new Float64Array(n + 1); const [r0, r1] = T.appRamp || [4, 6]; let acc = 0;
   for (let i = 1; i <= n; i++) { const t = i / 200; acc += smoother(0, r0, t) * (1 - smoother(T.approachEnd - r1, T.approachEnd, t)); tab[i] = acc; }
@@ -991,7 +999,8 @@ function approachShot(t) {
   const uu = u + LOOK_AHEAD / appLen;
   const ahead = uu <= 1 ? appCurve.getPointAt(uu) : END_POS.clone().add(appCurve.getTangentAt(1).multiplyScalar((uu - 1) * appLen));
   ahead.y -= 10;
-  const tgt = ahead.lerp(ORB_AIM, smoother(T.approachEnd - 3.4, T.approachEnd, t));
+  const focus = FOCUS.clone().lerp(ORB_AIM, smoother(T.approachEnd - 9.5, T.approachEnd, t));
+  const tgt = ahead.lerp(focus, smoother(0.0, 7.5, t));
   return { pos, tgt, fov: 40 };
 }
 // ---- shot 2: a single continuous rise from the beach to orbit height. Height comes from the `alt` keys; the tilt, the swing round

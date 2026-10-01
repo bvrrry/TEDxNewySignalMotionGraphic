@@ -16,27 +16,27 @@ An animated opener for TEDxNewy 2026, built as a real-time Three.js scene of New
 
 | cut | length | use | status |
 |---|---|---|---|
-| `long` | 46.6 s | the event opener, played before the show | near final: awaiting sign-off, then 4K render and final audio mix |
+| `long` | 47.6 s | the event opener, played before the show | near final: awaiting sign-off, then 4K render and final audio mix |
 | `short` | 8.6 s | a sting before each speaker walks on | **parked**: it runs but has not been retimed for the current scene; a bird's-eye signal spreading out through Newcastle, then the same world view and "i" outro |
 
 Final format: 3840 x 2160, 30 fps, H.264 with AAC audio.
 
 ## The long cut, beat by beat
 
-1. **0 to 19 s, the glide.** From the sea off Nobbys lighthouse, one long smooth arc: past the lighthouse and its sweeping beam, round Fort Scratchley, bowing out around the Ocean Baths headland, and into the bay to settle in front of Newcastle Beach. The camera always looks along its own path (no pans, no turns) and eases to a stop.
-2. **13 to 21 s, the orb is born.** A glow and fine rings in the sand draw in light filaments and motes that spiral up into an orb. It floats up, then drops back into the ground.
-3. **21.7 to 29 s, the signal spreads.** Streets, then buildings, light outward from the beach while the camera makes one continuous rise, tilting and swinging round to a top-down view of the city.
-4. **29 to 30 s, city to globe.** A fast zoom-blur punch with a little shake hides the change from detailed map to the satellite view.
-5. **30 to 39 s, across the country, then the world.** A web sprawls out from Newcastle across Australia, reaching the other cities one by one, then arcs fly out to the rest of the world.
-6. **39 to 46.6 s, home.** The orb returns and lands as the dot of the "i". The planet and background fade, the text holds for a moment, then fades to black.
+1. **0 to 20 s, the glide.** From the sea off Nobbys lighthouse, one wide arc: past the lighthouse and its sweeping beam, round Fort Scratchley, bowing out around the Ocean Baths headland, then a straight run in over the bay to Newcastle Beach. The camera goes wide but keeps looking in at the centre of the arc (the east end of the city), then the aim drifts onto the orb as it eases to a stop. Look direction turns at 8 degrees per second or less.
+2. **14 to 22 s, the orb is born.** A glow and fine rings in the sand draw in light filaments and motes that spiral up into an orb. It floats up, then drops back into the ground.
+3. **22.7 to 30 s, the signal spreads.** Streets, then buildings, light outward from the beach while the camera makes one continuous rise, tilting and swinging round to a top-down view of the city.
+4. **30.3 to 31 s, city to globe.** A fast zoom-blur punch with a little shake hides the change from detailed map to the satellite view.
+5. **31 to 40 s, across the country, then the world.** The zoom-out from the state to the whole country is quick (about 4 s), then eases into a slower rotation round the earth. A web sprawls out from Newcastle across Australia, reaching the other cities one by one, then arcs fly out to the rest of the world.
+6. **40 to 47.6 s, home.** The orb returns and lands as the dot of the "i". The planet and background fade, the text holds for a moment, then fades to black.
 
 ## Creative decisions (agreed with Will)
 
 These came out of review and should carry forward:
 
-- **Camera:** slow, smooth, one arc; never fast or jerky. It may stay a little off the coast at the headlands.
+- **Camera:** slow, smooth, one wide arc that keeps its focus on the locus of the arc (`FOCUS`); never fast or jerky. It may stay a little off the coast at the headlands.
 - **No people.** The orb forms from the ground. (An earlier mannequin was dropped.)
-- **Geography is edited for the film, not surveyed.** The Nobbys peninsula and breakwall are just hill and lighthouse (no cottages, lights or small structures). The big empty plateau between Fort Scratchley and the Ocean Baths is open sea against a retaining wall with the esplanade (road, footpath, street lamps) on top. See `CARVE`, `WALL` and `inNob` in `main.js`.
+- **Geography is edited for the film, not surveyed.** The wide spit between Fort Scratchley and Nobbys is submerged (it is not there in real life): open sea, with only the lighthouse hill, the fort headland and a narrow causeway left, and no cottages, lights or small structures. The empty plateau between the fort and the Ocean Baths is open sea against a retaining wall with the esplanade (road, footpath, street lamps) on top. The Ocean Baths are one rectangular pool and one circular pool. See `CARVE`, `WALL`, `inNob` and the Nobbys block in the land mask in `main.js`.
 - **Street lights are real-looking lamps on poles** along the beach footpath and the wall esplanade, not floating glow orbs.
 - **Lighting:** a modest ambient lift so the baths, sea and buildings read, without losing the night mood. Windows are warm amber with a few red-orange ones, and glow a little.
 - **The spread is a sprawl** over the whole country (not a letter shape). It must reach the coasts before the world arcs begin.
