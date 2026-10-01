@@ -17,7 +17,7 @@ An animated opener for TEDxNewy 2026, built as a real-time Three.js scene of New
 | cut | length | use | status |
 |---|---|---|---|
 | `long` | 46.1 s | the event opener, played before the show | near final: awaiting sign-off, then 4K render |
-| `short` | 10.5 s | a sting before each speaker walks on | built: the long cut from the crossfade onwards, compressed. It fades in from black on the lit city sprawl, punches out to the globe, spreads across the country and the world, brings the orb home to the "i", holds the title, then fades to black. Own audio (take B, short version) |
+| `short` | 9.9 s | a sting before each speaker walks on | built: the long cut from the punch-out onwards, compressed. It opens already inside the zoom-blur punch from the lit city to the globe (a 0.2 s fade from black, no slow build), spreads across the country and the world, brings the orb home to the "i", holds the title, then fades to black. Own deep audio |
 
 Final format: 3840 x 2160, 30 fps, H.264 with AAC audio.
 
@@ -41,7 +41,8 @@ These came out of review and should carry forward:
 - **Lighting:** a modest ambient lift so the baths, sea and buildings read, without losing the night mood. Windows are warm amber with a few red-orange ones, and glow a little.
 - **The spread is a sprawl** over the whole country (not a letter shape). It must reach the coasts before the world arcs begin.
 - **Outro:** planet and background fade first, the text holds 1 to 2 s, then everything fades to black. The text stays up longer than it did originally.
-- **Audio: take B is the chosen one** (piano-led, A minor lifting to A major). Three takes were made; A and C are kept as alternates. Take A (`audio.py`) is dark and drone-led (sub drone, saw pads, choir, braam hits, subtle beat). Take B (`audio_b.py`) is more musical: a felt-piano arpeggio in A minor, string pads, taiko-style drums building to the impact, staccato strings through the rise, lifting to A major at the title. Take C (`audio_c.py`) is a trailer-style build in D minor lifting to D major: a driving cello ostinato from the orb's birth, celesta bells, taiko into the impact, brass swells into the title. All three have bells on each city and a long reverb. The soundtrack is finalised last, after the picture is locked.
+- **Short cut audio:** `audio_short.py` is a deeper take derived from take B: no whooshes or risers, everything an octave down, a sub boom and big drum on the punch, low brass swells into the title. About 65% of its energy sits below 500 Hz. Output `signal_audio_short_deep.wav`.
+- **Audio (long cut): take B is the chosen one** (piano-led, A minor lifting to A major). Three takes were made; A and C are kept as alternates. Take A (`audio.py`) is dark and drone-led (sub drone, saw pads, choir, braam hits, subtle beat). Take B (`audio_b.py`) is more musical: a felt-piano arpeggio in A minor, string pads, taiko-style drums building to the impact, staccato strings through the rise, lifting to A major at the title. Take C (`audio_c.py`) is a trailer-style build in D minor lifting to D major: a driving cello ostinato from the orb's birth, celesta bells, taiko into the impact, brass swells into the title. All three have bells on each city and a long reverb. The soundtrack is finalised last, after the picture is locked.
 
 ## Where things live
 
@@ -61,7 +62,7 @@ All timings are in `timelines.json` (per cut); `main.js` reads them, so re-timin
 - `main.js`: the whole scene. Land masks, terrain, OSM streets and buildings, landmarks, beach lamps and footpaths, the orb and its effects, the street front, the globe, the Australia web, world arcs, post-processing, the title overlay. `window.renderFrame(t)` renders time `t` deterministically.
 - `timelines.json`: every timing and camera key for both cuts.
 - `render.js`: puppeteer driver. Renders stills or an MP4 at any resolution and writes `events_<cut>.json` (city arrival times, arcs, world timing) for the audio.
-- `audio.py`, `audio_b.py`, `audio_c.py`: three synthesised sound designs (takes A, B and C), timed from `timelines.json` and `events_<cut>.json`. Output `signal_audio_<cut>.wav`, `_b.wav` and `_c.wav`.
+- `audio.py`, `audio_b.py`, `audio_c.py`, `audio_short.py`: synthesised sound designs (takes A, B and C for the long cut; the deep take for the short cut), timed from `timelines.json` and `events_<cut>.json`. Output `signal_audio_<cut>.wav`, `_b.wav` and `_c.wav`.
 - `preview.html`, `start_preview.bat`: live scrub preview.
 - `probe.js`, `asciimap.js`, `speed.js`: dev tools (render from any camera with the flight path drawn; ASCII land/sea map with the path; flight speed and height profile).
 - `data/`: OpenStreetMap extracts (coastline, harbour, breakwalls, streets, building footprints) in local metres. Origin -32.9305, 151.7870 (Newcastle Beach); x east, z south.
@@ -85,9 +86,9 @@ Chrome is found automatically on Windows, else set `$CHROME`. Add `--gpu 1` to u
 ```bash
 node render.js --cut long  --w 1280 --h 720 --gpu 1 --msaa 2 --preset veryfast --crf 22 --out previews/silent_long.mp4
 node render.js --cut short --w 1280 --h 720 --gpu 1 --msaa 2 --preset veryfast --crf 22 --out previews/silent_short.mp4
-python audio_b.py long ; python audio_b.py short
+python audio_b.py long ; python audio_short.py short
 ffmpeg -i previews/silent_long.mp4  -i signal_audio_long_b.wav  -c:v libx264 -crf 25 -c:a aac -b:a 192k -shortest "previews/preview long.mp4"
-ffmpeg -i previews/silent_short.mp4 -i signal_audio_short_b.wav -c:v libx264 -crf 25 -c:a aac -b:a 192k -shortest "previews/preview short.mp4"
+ffmpeg -i previews/silent_short.mp4 -i signal_audio_short_deep.wav -c:v libx264 -crf 25 -c:a aac -b:a 192k -shortest "previews/preview short.mp4"
 ```
 
 - **Stills** for quick checks: `node render.js --cut long --w 960 --h 540 --gpu 1 --stills 1,9,15,21,27,35 --outdir stills`
