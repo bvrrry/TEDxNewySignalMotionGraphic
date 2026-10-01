@@ -137,16 +137,11 @@ const cLand = document.createElement('canvas'); cLand.width = cLand.height = MRE
   pathPoly(g, closed); g.fill();
   g.fillStyle = '#000'; pathPoly(g, COAST.HARBOUR); g.fill();
   g.fillStyle = '#000'; pathPoly(g, CARVE); g.fill();
-  // the wide spit between the fort and Nobbys is submerged in real life: sea, except the lighthouse hill, the fort headland and a narrow causeway between
-  g.fillStyle = '#000'; pathPoly(g, [[330, -420], [330, -1500], [2300, -1500], [2300, -420]]); g.fill();
-  const mpm = (MX1 - MX0) / MRES; g.fillStyle = '#fff'; g.strokeStyle = '#fff'; g.lineCap = 'round';
-  for (const [cx, cz, r] of [[1066, -1324, 170], [412, -522, 150]]) { g.beginPath(); g.arc(mpx(cx), mpz(cz), r / mpm, 0, Math.PI * 2); g.fill(); }
-  g.lineWidth = 26 / mpm; g.beginPath(); g.moveTo(mpx(440), mpz(-575)); g.lineTo(mpx(1066), mpz(-1324)); g.stroke();
   g.fillStyle = '#fff'; for (const b of BREAKS) { pathPoly(g, b); g.fill(); }
 }
 const BEACHES = [ // coastline stretches that are sand
   (x, z) => x > -275 && x < 70 && z > -95 && z < 150,       // Newcastle Beach
-  (x, z) => false,   // Nobbys Beach (submerged in the film)
+  (x, z) => x > 560 && x < 1060 && z > -1135 && z < -690,   // Nobbys Beach
   (x, z) => x > -1720 && x < -1240 && z > 890 && z < 1260,  // Bar Beach
   (x, z) => x < -1880 && z > 1300,                          // Merewether
   (x, z) => z < -1700 && x < 1200,                          // Stockton Beach
@@ -656,7 +651,7 @@ function footpathRun(pts, w) {
 {
   const c = COAST.COAST, path = [];
   for (let i = 0; i + 1 < c.length; i++) { const [x1, z1] = c[i], [x2, z2] = c[i + 1]; if (!BEACHES[0](x1, z1)) continue; const L = Math.hypot(x2 - x1, z2 - z1); const nx = -(z2 - z1) / L, nz = (x2 - x1) / L;
-    for (let s = 0; s < L; s += 13) { const x = x1 + (x2 - x1) * s / L - nx * 58, z = z1 + (z2 - z1) * s / L - nz * 58; if (!isLand(x, z)) continue; path.push([x, z]); if (Math.round(s / 13) % 2 === 0) streetLamp(x, z, [nx, nz]); } }
+    for (let s = 0; s < L; s += 13) { const x = x1 + (x2 - x1) * s / L - nx * 58, z = z1 + (z2 - z1) * s / L - nz * 58; if (!isLand(x, z)) continue; path.push([x, z]); if (Math.round(s / 13) % 2 === 0 && Math.hypot(x - ORB.x, z - ORB.z) > 65) streetLamp(x, z, [nx, nz]); } }
   if (path.length > 1) footpath(path);
   // the esplanade along the wall
   for (let i = 0; i + 1 < WALL.length; i++) { const [x1, z1] = WALL[i], [x2, z2] = WALL[i + 1]; const L = Math.hypot(x2 - x1, z2 - z1), nx = -(z2 - z1) / L, nz = (x2 - x1) / L; const mx = (x1 + x2) / 2, mz = (z1 + z2) / 2, sg = inCarve(mx + nx * 4, mz + nz * 4) ? -1 : 1;
@@ -771,6 +766,15 @@ const groundGlowMat = new THREE.ShaderMaterial({
       gl_FragColor = vec4(c*edge*uA, 1.0); }`
 });
 const groundGlow = new THREE.Mesh(new THREE.PlaneGeometry(26, 26).rotateX(-Math.PI / 2), groundGlowMat); groundGlow.position.copy(ORB).setY(ORB.y + 0.12); groundGlow.renderOrder = 2; groundGlow.frustumCulled = false; city.add(groundGlow);
+const shockMat = new THREE.ShaderMaterial({
+  uniforms: { uTau: { value: -1 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  vertexShader: `varying vec2 vP; void main(){ vP = position.xz; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+  fragmentShader: `uniform float uTau; varying vec2 vP;
+    void main(){ if (uTau < 0.0) discard; float r = length(vP); float a = 0.0;
+      for (int i = 0; i < 6; i++) { float tr = uTau - 0.13*float(i); if (tr <= 0.0) continue; float R = 520.0*(1.0 - exp(-tr/0.75)); float w = 1.2 + 0.035*R; a += exp(-pow((r-R)/w, 2.0)) * exp(-tr/0.9) / (1.0 + 0.3*float(i)); }
+      vec3 c = mix(vec3(0.9,0.05,0.1), vec3(1.0,0.7,0.7), clamp(a - 0.8, 0.0, 1.0)); gl_FragColor = vec4(c*a*1.5*smoothstep(1500.0, 0.0, r), 1.0); }`
+});
+const shock = new THREE.Mesh(new THREE.PlaneGeometry(1600, 1600).rotateX(-Math.PI / 2), shockMat); shock.position.copy(ORB).setY(ORB.y + 0.25); shock.renderOrder = 2; shock.frustumCulled = false; city.add(shock);
 const column = glowSprite(0xff2a3a, 1, 1, TEX_SOFT); column.center.set(0.5, 0.0); column.position.copy(ORB); column.renderOrder = 5; city.add(column);
 // trail while the orb drops
 const NT = 40;
@@ -1099,6 +1103,10 @@ function frame(t) {
   U.uTime.value = t;
   // ---------------- city camera
   const cs = cityShot(t);
+  { const ts = t - T.impact; if (ts > 0 && ts < 1.5) { // the orb hits the ground: a short, decaying shake
+      const amp = Math.exp(-ts / 0.38) * (1 - smooth(1.0, 1.5, ts)), a = 0.0045 * cs.pos.distanceTo(cs.tgt) * amp;
+      cs.pos.x += Math.sin(t * 67) * a * 0.6; cs.pos.y += Math.sin(t * 53 + 1) * a * 0.8; cs.pos.z += Math.cos(t * 59) * a * 0.6;
+      cs.tgt.x += Math.sin(t * 71 + 2) * a; cs.tgt.y += Math.cos(t * 49) * a * 0.7; cs.tgt.z += Math.sin(t * 43) * a; } }
   { const gy = isLand(cs.pos.x, cs.pos.z) ? groundY(cs.pos.x, cs.pos.z) : 0.2; if (cs.pos.y < gy + 0.7) cs.pos.y = gy + 0.7; }
   setCam(cityCam, cs);
   const camH = Math.max(1, cityCam.position.y);
@@ -1141,6 +1149,7 @@ function frame(t) {
     ts[i] = (3.2 * (1 - i / NT) + 0.5) * sz;
   }
   tGeo.attributes.position.needsUpdate = true; tGeo.attributes.aA.needsUpdate = true; tGeo.attributes.aS.needsUpdate = true;
+  shockMat.uniforms.uTau.value = (t > T.impact && t < T.impact + 6) ? t - T.impact : -1;
   U.uFront.value = cityFront(t);
   const tau = t - T.impact;
   if (tau > 0) { const rr = 3 + 320 * (1 - Math.exp(-tau / 0.8)); ring.scale.setScalar(rr); ringMat.opacity = Math.exp(-tau / 0.6); pillar.scale.set(2 + tau * 5, 26 * Math.exp(-tau / 0.3), 1); pillar.material.opacity = 0.6 * Math.exp(-tau / 0.25); }
