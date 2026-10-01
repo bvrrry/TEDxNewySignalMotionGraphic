@@ -220,6 +220,28 @@ for f, dly in zip([midi(74), midi(78), midi(81), midi(86), midi(90)], [0, 0.07, 
 bell(T['logo'][0] + 0.1, midi(93), 0.03, 1.8, 0.2)
 add(np.sin(2 * np.pi * 36.71 * t) * env(land, 0.3, 2.4) * 0.22)
 
+# ---------------------------------------------------------------- a subtle beat: soft kick on the grid (one lands on the impact), off-beat hats, a gentle pump on the pads
+BPM = 112.0
+beat = 60.0 / BPM
+k0 = impact - np.ceil((impact - gf) / beat) * beat   # first kick after the orb completes, grid locked to the impact
+beat_gain = (0.05 + 0.10 * ramp(gf, impact)) * (0.85 + 0.15 * ramp(impact, xf0)) * (1 - ramp(dim0 - 0.2, dim1 + 0.3))
+kick = np.zeros(N); kenv = np.zeros(N); hats = np.zeros(N)
+tk = k0
+while tk < dim1 + 0.3 and tk < DUR - 0.5:
+    i0 = int(max(tk, 0) * SR); ln = int(0.45 * SR); i1 = min(i0 + ln, N)
+    if i1 > i0 and tk >= 0:
+        x = np.arange(i1 - i0) / SR
+        body = np.sin(2 * np.pi * np.cumsum(46 + 95 * np.exp(-x / 0.03)) / SR) * np.exp(-x / 0.17) * np.minimum(x / 0.003, 1)
+        kick[i0:i1] += body; kenv[i0:i1] += np.exp(-x / 0.12)
+        th = tk + beat / 2; j0 = int(th * SR); j1 = min(j0 + int(0.06 * SR), N)
+        if j1 > j0 and th > impact - 0.1:
+            y = np.arange(j1 - j0) / SR; hats[j0:j1] += rng.standard_normal(j1 - j0) * np.exp(-y / 0.012)
+    tk += beat
+pump = 1 - 0.16 * np.clip(kenv, 0, 1) * ramp(impact - 0.2, impact + 0.3)
+L *= pump; Rr *= pump
+add(kick * beat_gain, 0, 1.0)
+add(hp(hats, 6500) * beat_gain * 0.22 * ramp(impact, impact + 1.0), 0.15, 1.0)
+
 # ---------------------------------------------------------------- reverb, final fade, limiter
 ir_len = int(3.6 * SR)
 x = np.arange(ir_len)

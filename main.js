@@ -112,9 +112,16 @@ const txt = async f => (await fetch(f)).text();
 const lines = s => s.split('\n').map(l => l.trim()).filter(l => l && l[0] !== '#');
 const COAST = {}; const BREAKS = [];
 for (const l of lines(await txt('data/coast.txt'))) { const [tag, ...rest] = l.split(' '); const pts = rest.map(p => p.split(',').map(Number)); if (tag === 'BREAK') BREAKS.push(pts); else COAST[tag] = pts; }
+// Edited geography (see README, "Creative decisions"): the dark plateau between Fort Scratchley and the Ocean Baths is open sea,
+// banging against a retaining wall with the esplanade on top; the Nobbys peninsula and breakwall are just hill and lighthouse.
+const CARVE = [[300, -425], [650, -400], [900, -400], [900, -125], [450, -125], [230, -135], [240, -190], [275, -250], [292, -330]];
+const WALL = [[300, -425], [292, -330], [275, -250], [240, -190], [230, -135], [450, -125]]; // the new shoreline, as a polyline
+function inPoly(x, z, P) { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, zi] = P[i], [xj, zj] = P[j]; if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c; } return c; }
+const inCarve = (x, z) => inPoly(x, z, CARVE);
+const inNob = (x, z) => x > 430 && z < -540 && x < 2200;
 const ROADS = [];
-for (const l of lines(await txt('data/roads.txt'))) { const cls = +l[0]; const toks = l.slice(1).split(' '); const p0 = toks[0].split(',').map(Number); const pts = [p0]; for (let i = 1; i < toks.length; i++) { const [dx, dz] = toks[i].split(',').map(Number); const q = pts[pts.length - 1]; pts.push([q[0] + dx, q[1] + dz]); } ROADS.push({ cls, pts }); }
-const OSMB = lines(await txt('data/buildings.txt')).map(l => { const [h, x, z, w, d, a] = l.split(' ').map(Number); return { h, x, z, w, d, a: a / 100 }; });
+for (const l of lines(await txt('data/roads.txt'))) { const cls = +l[0]; const toks = l.slice(1).split(' '); const p0 = toks[0].split(',').map(Number); const pts = [p0]; for (let i = 1; i < toks.length; i++) { const [dx, dz] = toks[i].split(',').map(Number); const q = pts[pts.length - 1]; pts.push([q[0] + dx, q[1] + dz]); } let run = []; for (const p of pts) { if (inCarve(p[0], p[1]) || inNob(p[0], p[1])) { if (run.length > 1) ROADS.push({ cls, pts: run }); run = []; } else run.push(p); } if (run.length > 1) ROADS.push({ cls, pts: run }); }
+const OSMB = lines(await txt('data/buildings.txt')).map(l => { const [h, x, z, w, d, a] = l.split(' ').map(Number); return { h, x, z, w, d, a: a / 100 }; }).filter(b => !inCarve(b.x, b.z) && !inNob(b.x, b.z));
 const LAT0 = -32.9305, LON0 = 151.7870; // local-metre origin (Newcastle Beach)
 const toLocal = (lat, lon) => [(lon - LON0) * 93470, (LAT0 - lat) * 110950];
 
@@ -129,6 +136,7 @@ const cLand = document.createElement('canvas'); cLand.width = cLand.height = MRE
   const c = COAST.COAST; const closed = c.concat([[2161, -9000], [-9000, -9000], [-9000, 9000], [-3430, 9000]]);
   pathPoly(g, closed); g.fill();
   g.fillStyle = '#000'; pathPoly(g, COAST.HARBOUR); g.fill();
+  g.fillStyle = '#000'; pathPoly(g, CARVE); g.fill();
   g.fillStyle = '#fff'; for (const b of BREAKS) { pathPoly(g, b); g.fill(); }
 }
 const BEACHES = [ // coastline stretches that are sand
@@ -183,6 +191,7 @@ function isLand(x, z) {
   return bigPix[pz * BRES + px] > 127;
 }
 const isSand = (x, z) => inCore(x, z) ? sandPix[Math.floor(mpz(z)) * MRES + Math.floor(mpx(x))] > 60 : false;
+function distToWall(x, z) { let best = 1e9; for (let i = 0; i + 1 < WALL.length; i++) { const [x1, z1] = WALL[i], [x2, z2] = WALL[i + 1]; const dx = x2 - x1, dz = z2 - z1; const t = clamp(((x - x1) * dx + (z - z1) * dz) / (dx * dx + dz * dz)); best = Math.min(best, Math.hypot(x - (x1 + dx * t), z - (z1 + dz * t))); } return best; }
 // terrain (hand-tuned hills: Nobbys head, Flagstaff Hill, The Hill, Shepherds Hill, Cooks Hill)
 const gauss = (x, z, cx, cz, s) => Math.exp(-((x - cx) ** 2 + (z - cz) ** 2) / (2 * s * s));
 function terrainH(x, z) {
@@ -190,7 +199,8 @@ function terrainH(x, z) {
     + 40 * gauss(x, z, -880, 630, 190) + 24 * gauss(x, z, -1500, 850, 420) + 18 * gauss(x, z, -3200, 1600, 1400)
     + 10 * gauss(x, z, -6000, -4000, 3000) + 25 * gauss(x, z, -9000, 2000, 6000);
   h += 3 * Math.sin(x * 0.0021 + 1.3) * Math.sin(z * 0.0017 - 0.4);
-  h *= 0.15 + 0.85 * smooth(90, 320, Math.hypot(x + 94, z + 42)); // keep Newcastle Beach flat around the person
+  h *= 0.15 + 0.85 * smooth(90, 320, Math.hypot(x + 94, z + 42)); // keep Newcastle Beach flat around the orb
+  { const dw = distToWall(x, z); h = lerp(3.6, h, smooth(8, 110, dw)); }
   return Math.max(0.4, h);
 }
 function sandSoft(x, z) { if (!inCore(x, z)) return 0; const px = Math.floor((x - MX0) / (MX1 - MX0) * 1024), pz = Math.floor((z - MZ0) / (MZ1 - MZ0) * 1024); return clamp(sandSoftPix[pz * 1024 + px] / 160); }
@@ -199,7 +209,7 @@ function groundY(x, z) { return lerp(terrainH(x, z), 0.5, sandSoft(x, z)); }
 // shared uniforms
 const U = {
   uTime: { value: 0 }, uCamPos: { value: new THREE.Vector3() },
-  uFogColor: { value: new THREE.Color(0.004, 0.003, 0.006) }, uFogDensity: { value: 0.001 },
+  uFogColor: { value: new THREE.Color(0.007, 0.005, 0.011) }, uFogDensity: { value: 0.001 },
   uOrbPos: { value: new THREE.Vector3() }, uOrbI: { value: 0 }, uFront: { value: -1e9 },
   uWidthScale: { value: 1 }, uRes: { value: new THREE.Vector2(W, H) }, uMask: { value: maskTex }, uBig: { value: bigTex },
 };
@@ -224,7 +234,7 @@ const sky = new THREE.Mesh(new THREE.SphereGeometry(1000, 48, 24), new THREE.Sha
   fragmentShader: GLSL_COMMON + `varying vec3 vW;
   void main(){ vec3 d = normalize(vW - uCamPos); float h = d.y;
     float east = 0.35 + 0.65*smoothstep(-0.6, 1.0, dot(normalize(d.xz + vec2(1e-5)), normalize(vec2(0.55, 0.3))));
-    vec3 col = vec3(0.0015,0.0015,0.004) + vec3(0.13,0.004,0.01)*exp(-abs(h)*9.0)*east + vec3(0.02,0.0,0.004)*exp(-abs(h)*2.5);
+    vec3 col = vec3(0.0022,0.0026,0.0055) + vec3(0.005,0.006,0.014)*(0.35 + 0.65*smoothstep(-0.2, 0.7, h)) + vec3(0.14,0.005,0.012)*exp(-abs(h)*9.0)*east + vec3(0.022,0.0,0.005)*exp(-abs(h)*2.5);
     vec3 q = d*420.0; vec3 cell = floor(q); float r = hash12(cell.xy + cell.z*17.0);
     vec3 f = fract(q) - 0.5; float st = step(0.985, r) * smoothstep(0.12, 0.0, length(f)) * smoothstep(0.02, 0.25, h);
     col += vec3(0.5,0.5,0.6)*st*(0.3+0.7*fract(r*91.0));
@@ -253,8 +263,9 @@ const oceanMat = new THREE.ShaderMaterial({
     float fres = 0.02 + 0.98*pow(1.0 - max(dot(n, V), 0.0), 5.0);
     float h = max(R.y, 0.0);
     float east = 0.35 + 0.65*smoothstep(-0.6, 1.0, dot(normalize(R.xz + vec2(1e-4)), normalize(vec2(0.55, 0.3))));
-    vec3 skyc = vec3(0.0015,0.0015,0.004) + vec3(0.16,0.005,0.012)*exp(-h*9.0)*east;
-    vec3 col = vec3(0.0012,0.0014,0.0025)*(1.0-fres) + skyc*fres;
+    vec3 skyc = vec3(0.0022,0.0026,0.0055) + vec3(0.008,0.009,0.02)*(0.4 + 0.6*h) + vec3(0.17,0.006,0.013)*exp(-h*9.0)*east;
+    vec3 col = vec3(0.0032,0.0048,0.0085)*(1.0-fres) + skyc*fres;
+    col += vec3(0.35,0.38,0.55) * pow(max(dot(R, normalize(vec3(-0.35,0.45,-0.45))), 0.0), 140.0) * 0.4; // moon glints on the swell
     vec3 L = uOrbPos - vW; float dl = length(L); L /= max(dl, 1e-3);
     col += vec3(1.0,0.12,0.15) * pow(max(dot(R, L), 0.0), 120.0) * 40.0 / (1.0 + dl*dl*0.004) * uOrbI;
     if (inCoreRect(vW.xz)) {
@@ -264,7 +275,7 @@ const oceanMat = new THREE.ShaderMaterial({
       float ph = shore*55.0 - uTime*1.6 + sin(vW.x*0.03 + vW.z*0.02)*1.2;
       float foam = smoothstep(0.8, 1.0, sin(ph)) * near;
       float wash = smoothstep(0.3, 0.5, shore) * (0.6 + 0.4*sin(uTime*0.9 + vW.z*0.02 + vW.x*0.013));
-      col += vec3(0.055,0.05,0.055) * (foam + wash*0.6);
+      col += vec3(0.03,0.028,0.032) * (foam + wash*0.5);
     }
     col = applyFog(col, vW);
     gl_FragColor = vec4(col, 1.);
@@ -282,8 +293,8 @@ const landMat = (core) => new THREE.ShaderMaterial({
     ${core ? `vec4 m = texture2D(uMask, maskUV(vW.xz)); if (m.r < 0.5 && vW.y < 0.9) discard; sand = m.g; shore = m.b;`
            : `if (inCoreRect(vW.xz)) discard; if (texture2D(uBig, bigUV(vW.xz)).r < 0.5) discard;`}
     vec3 n = normalize(vN);
-    vec3 col = vec3(0.0045,0.0045,0.006) * (0.7 + 0.3*n.y) + vec3(0.002,0.0,0.0006)*(1.0-n.y)*4.0;
-    vec3 sandC = vec3(0.03,0.024,0.023) * (0.85 + 0.3*hash12(floor(vW.xz*6.0)));
+    vec3 col = vec3(0.0072,0.0072,0.0100) * (0.7 + 0.3*n.y) + vec3(0.003,0.0,0.001)*(1.0-n.y)*4.0;
+    vec3 sandC = vec3(0.043,0.035,0.033) * (0.85 + 0.3*hash12(floor(vW.xz*6.0)));
     sandC *= mix(0.35, 1.0, smoothstep(0.52, 0.72, shore));
     col = mix(col, sandC, smoothstep(0.2, 0.6, sand));
     vec3 L = uOrbPos - vW; float d2 = dot(L,L);
@@ -323,6 +334,16 @@ for (const r of ROADS) { let prev = -1; for (const [x, z] of r.pts) { const id =
       if (j === k || n.adj.some(([v]) => v === j)) continue; const d = (nodes[j].x - n.x) ** 2 + (nodes[j].z - n.z) ** 2; if (d < bd) { bd = d; best = j; } }
     if (best >= 0) addEdge(k, best, 4); }
 }
+{ // esplanade along the retaining wall
+  const road = []; for (let i = 0; i + 1 < WALL.length; i++) { const [x1, z1] = WALL[i], [x2, z2] = WALL[i + 1]; const L = Math.hypot(x2 - x1, z2 - z1), nx = -(z2 - z1) / L, nz = (x2 - x1) / L;
+    const mx = (x1 + x2) / 2, mz = (z1 + z2) / 2, sg = inCarve(mx + nx * 4, mz + nz * 4) ? -1 : 1;
+    for (let sdist = 0; sdist < L; sdist += 22) road.push([x1 + (x2 - x1) * sdist / L + nx * sg * 9, z1 + (z2 - z1) * sdist / L + nz * sg * 9]); }
+  road.push([WALL[WALL.length - 1][0] + 0, WALL[WALL.length - 1][1] + 9]);
+  const n0 = nodes.length; let prev = -1;
+  for (const [x, z] of road) { const id = nodeAt(x, z); if (prev >= 0) addEdge(prev, id, 2); prev = id; }
+  const link = (id) => { let b = -1, bd = 1e18; for (let k = 0; k < n0; k++) { if (inCarve(nodes[k].x, nodes[k].z)) continue; const d = (nodes[k].x - nodes[id].x) ** 2 + (nodes[k].z - nodes[id].z) ** 2; if (d < bd) { bd = d; b = k; } } if (b >= 0) addEdge(id, b, 3); };
+  link(n0); link(nodes.length - 1); for (let k = n0 + 6; k < nodes.length - 3; k += 6) link(k);
+}
 const realCount = nodes.length;
 const CITY_C = V3(-900, 0, 150);
 const REAL_R = { x0: -2800, x1: 1300, z0: -1150, z1: 1500 };
@@ -332,7 +353,7 @@ const inReal = (x, z, m = 0) => x > REAL_R.x0 + m && x < REAL_R.x1 - m && z > RE
   for (let i = 0; i < 9000 && outer.length < 5200; i++) {
     const r = 1300 * Math.pow(16000 / 1300, rng()), th = rng() * Math.PI * 2;
     const x = CITY_C.x + Math.cos(th) * r, z = CITY_C.z + Math.sin(th) * r;
-    if (inReal(x, z, 120) || !isLand(x, z)) continue;
+    if (inReal(x, z, 120) || !isLand(x, z) || inNob(x, z)) continue;
     outer.push(nodeAt(x, z));
   }
   const cand = outer.concat(nodes.map((n, k) => k).filter(k => k < realCount && !inReal(nodes[k].x, nodes[k].z, 250)));
@@ -344,7 +365,7 @@ const inReal = (x, z, m = 0) => x > REAL_R.x0 + m && x < REAL_R.x1 - m && z > RE
     for (let rr = 1; rr <= 4 && near.length < 6; rr++) { near.length = 0; for (let dx = -rr; dx <= rr; dx++) for (let dz = -rr; dz <= rr; dz++) for (const j of grid.get((cx + dx) + ',' + (cz + dz)) || []) if (j !== k) near.push([j, Math.hypot(nodes[j].x - n.x, nodes[j].z - n.z)]); }
     near.sort((a, b) => a[1] - b[1]);
     let made = 0;
-    for (const [j, d] of near) { if (made >= 3) break; const key = k < j ? k + '_' + j : j + '_' + k; if (seen.has(key)) { made++; continue; }
+    for (const [j, d] of near) { if (made >= 3) break; if (inNob(nodes[j].x, nodes[j].z)) continue; const key = k < j ? k + '_' + j : j + '_' + k; if (seen.has(key)) { made++; continue; }
       let landN = 0; for (const f of [0.2, 0.4, 0.5, 0.6, 0.8]) if (isLand(lerp(n.x, nodes[j].x, f), lerp(n.z, nodes[j].z, f))) landN++;
       if (landN < 4 && !(landN >= 2 && d < 900)) continue;
       seen.add(key); addEdge(k, j, 9); made++; }
@@ -496,7 +517,7 @@ const bldMat = new THREE.ShaderMaterial({
   fragmentShader: GLSL_COMMON + `varying vec3 vW; varying vec3 vN; varying float vRand; varying float vDist; varying float vY; varying float vH; varying float vBase;
   void main(){
     vec3 n = normalize(vN);
-    vec3 col = vec3(0.007,0.0075,0.01) * (0.55 + 0.45*max(n.y,0.0) + 0.12*n.x);
+    vec3 col = vec3(0.0105,0.011,0.015) * (0.55 + 0.45*max(n.y,0.0) + 0.12*n.x);
     float since = uFront - vDist;
     float act = smoothstep(0.0, 80.0, since);
     float flash = step(0.0, since) * exp(-max(since,0.0)/70.0);
@@ -507,12 +528,12 @@ const bldMat = new THREE.ShaderMaterial({
       vec2 cell = floor(q); vec2 f = fract(q);
       float win = step(0.2,f.x)*step(f.x,0.8)*step(0.28,f.y)*step(f.y,0.78);
       float h = hash12(cell + vec2(vRand*131.0, vRand*57.0) + n.xz*7.0);
-      float lit = step(0.8, h), red = step(0.955, h);
-      vec3 wc = mix(vec3(0.5,0.3,0.16)*0.22, vec3(0.831,0.0,0.03)*1.3, red);
+      float lit = step(0.77, h), red = step(0.955, h);
+      vec3 wc = mix(vec3(1.0,0.58,0.24)*0.5, vec3(1.0,0.2,0.07)*1.25, red);
       float lit2 = step(0.55, h) * act;
-      vec3 wcol = wc*lit + vec3(0.831,0.02,0.05)*lit2*0.55 + vec3(1.0,0.3,0.3)*flash*step(0.3,h)*0.6;
+      vec3 wcol = wc*lit + vec3(1.0,0.24,0.07)*lit2*0.75 + vec3(1.0,0.4,0.26)*flash*step(0.3,h)*0.7;
       float aa = clamp(1.0 - (fwidth(q.x)+fwidth(q.y))*0.9, 0.0, 1.0);
-      vec3 avg = (wc*0.2 + vec3(0.831,0.02,0.05)*0.45*0.55*act + vec3(1.0,0.3,0.3)*flash*0.7*0.6)*0.3;
+      vec3 avg = (wc*0.2 + vec3(1.0,0.24,0.07)*0.45*0.75*act + vec3(1.0,0.4,0.26)*flash*0.7*0.7)*0.3;
       col += mix(avg, win*wcol, aa) * step(0.4, q.y);
       col += vec3(0.831,0.0,0.03) * smoothstep(0.985, 1.0, vY) * (0.04 + 0.6*act + 1.5*flash) * step(7.0, vH);
     } else col += vec3(0.831,0.0,0.03) * flash * 0.15;
@@ -534,7 +555,8 @@ const bldMat = new THREE.ShaderMaterial({
 }
 
 // ================================================================ landmarks
-city.add(new THREE.HemisphereLight(0x302030, 0x050505, 0.35));
+city.add(new THREE.HemisphereLight(0x4a4a72, 0x140e10, 0.65));
+const moonL = new THREE.DirectionalLight(0x7888b8, 0.55); moonL.position.set(-250, 300, 200); city.add(moonL);
 const dirL = new THREE.DirectionalLight(0xff3040, 0.25); dirL.position.set(-100, 60, 40); city.add(dirL);
 const rimL = new THREE.DirectionalLight(0xff4050, 1.6); rimL.position.set(300, 60, -400); city.add(rimL);
 const darkMat = new THREE.MeshStandardMaterial({ color: 0x0c0c0f, roughness: 0.85, flatShading: true });
@@ -549,13 +571,6 @@ const NOB = V3(1066, 0, -1324); NOB.y = terrainH(NOB.x, NOB.z);
   const cap = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 1.8, 16), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 1.4, 1.2) })); cap.position.set(NOB.x, NOB.y + 11, NOB.z); city.add(cap);
   const dome = new THREE.Mesh(new THREE.SphereGeometry(1.35, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), darkMat); dome.position.set(NOB.x, NOB.y + 11.9, NOB.z); city.add(dome);
   const lamp = glowSprite(0xfff0dd, 16, 1.3); lamp.position.set(NOB.x, NOB.y + 11, NOB.z); city.add(lamp);
-  const cottMat = new THREE.MeshStandardMaterial({ color: 0x8a847a, emissive: 0x3a352e, emissiveIntensity: 0.4, roughness: 0.8, flatShading: true });
-  for (const [dx, dz, w, d, r] of [[-14, 8, 14, 8, 0.3], [12, -6, 16, 9, 0.2], [6, 16, 10, 7, -0.4]]) {
-    const y = terrainH(NOB.x + dx, NOB.z + dz);
-    const c = new THREE.Mesh(new THREE.BoxGeometry(w, 4, d), cottMat); c.position.set(NOB.x + dx, y + 1.5, NOB.z + dz); c.rotation.y = r; city.add(c);
-    const roof = new THREE.Mesh(pitchedRoof(w, d), darkMat); roof.position.set(c.position.x, c.position.y + 2.6, c.position.z); roof.rotation.y = r; city.add(roof);
-    const wl = glowSprite(0xffc890, 5, 0.8); wl.position.set(c.position.x, c.position.y + 0.5, c.position.z); city.add(wl);
-  }
 }
 const beamMat = new THREE.ShaderMaterial({
   transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
@@ -595,25 +610,55 @@ const FORT = V3(412, 0, -522); FORT.y = terrainH(FORT.x, FORT.z);
   for (let i = 0; i < 8; i++) { const [x, z] = ring[i]; const s = glowSprite(0xffd8b0, 10, 0.4, TEX_SOFT); s.position.set(FORT.x + x * 1.02, FORT.y + 1.5, FORT.z + z * 1.02); city.add(s); }
 }
 for (const b of BREAKS) city.add(new THREE.Mesh(new THREE.ExtrudeGeometry(new THREE.Shape(b.map(([x, z]) => new THREE.Vector2(x, -z))), { depth: 3, bevelEnabled: false }).rotateX(-Math.PI / 2), darkMat));
-const navA = glowSprite(RED_LIN, 14, 1.8); navA.position.set(1582, 7, -1662); city.add(navA);
-const navB = glowSprite(RED_LIN, 14, 1.8); navB.position.set(1128, 7, -1952); city.add(navB);
 // Newcastle Ocean Baths + Canoe Pool
 {
-  const poolMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.004, 0.012, 0.016) });
-  const rimMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.1, 0.1, 0.11) });
+  const poolMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.02, 0.058, 0.075) });
+  const rimMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.2, 0.19, 0.18) });
   for (const [x, z, w, d, a] of [[368, -98, 52, 26, -0.33], [262, -58, 62, 44, -0.38]]) {
-    const g = new THREE.Group(); g.position.set(x, 0.45, z); g.rotation.y = -a; city.add(g);
+    const g = new THREE.Group(); g.position.set(x, groundY(x, z) + 0.25, z); g.rotation.y = -a; city.add(g);
     g.add(new THREE.Mesh(new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), poolMat));
+    const pg = new THREE.Mesh(new THREE.PlaneGeometry(w * 1.35, d * 1.35).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: TEX_SOFT, color: new THREE.Color(0.35, 0.6, 0.75), transparent: true, opacity: 0.42, blending: THREE.AdditiveBlending, depthWrite: false })); pg.position.y = 0.4; pg.renderOrder = 2; g.add(pg);
     for (const [px, pz, bw, bd] of [[0, -d / 2, w + 1, 1], [0, d / 2, w + 1, 1], [-w / 2, 0, 1, d], [w / 2, 0, 1, d]]) { const r = new THREE.Mesh(new THREE.BoxGeometry(bw, 0.9, bd), rimMat); r.position.set(px, 0.2, pz); g.add(r); }
   }
-  for (let k = 0; k < 7; k++) { const s = glowSprite(0xffb070, 4.5, 0.8); s.position.set(292 + k * 6, groundY(300, -120) + 3, -118 + k * 2); city.add(s); }
   const neon = new THREE.Mesh(new THREE.BoxGeometry(36, 0.3, 0.3), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.831 * 2.5, 0, 0.05) })); neon.position.set(307, groundY(307, -110) + 6.5, -104); neon.rotation.y = 0.35; city.add(neon);
 }
-// Newcastle Beach esplanade lamps
+// street lights on poles (warm, a short arm leaning over the footpath) and a footpath along the beach and the new wall
+const poleMat = new THREE.MeshStandardMaterial({ color: 0x2a2a30, roughness: 0.7, metalness: 0.3 });
+const headMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 1.45, 0.75) });
+function streetLamp(x, z, lean, h = 5.4) { // lean: unit vector (x,z) the arm points
+  const y = groundY(x, z);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, h, 8), poleMat); pole.position.set(x, y + h / 2, z); city.add(pole);
+  const ax = x + lean[0] * 0.9, az = z + lean[1] * 0.9;
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.07, 0.07), poleMat); arm.position.set(x + lean[0] * 0.45, y + h, z + lean[1] * 0.45); arm.rotation.y = -Math.atan2(lean[1], lean[0]); city.add(arm);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.12, 0.26), headMat); head.position.set(ax, y + h - 0.08, az); head.rotation.y = arm.rotation.y; city.add(head);
+  const g = glowSprite(0xffa860, 2.6, 0.95); g.position.set(ax, y + h - 0.15, az); city.add(g);
+  const pool = new THREE.Mesh(new THREE.PlaneGeometry(8, 8).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: TEX_SOFT, color: new THREE.Color(1.0, 0.55, 0.25), transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false })); pool.position.set(ax, groundY(ax, az) + 0.2, az); pool.renderOrder = 2; city.add(pool);
+}
+function footpath(all, w = 2.0) { // flat ribbon along a polyline of [x, z]; split where the line jumps
+  let run = []; const runs = [];
+  for (const p of all) { const q = run[run.length - 1]; if (q && Math.hypot(p[0] - q[0], p[1] - q[1]) > 30) { runs.push(run); run = []; } run.push(p); }
+  runs.push(run);
+  for (const pts of runs) if (pts.length > 1) footpathRun(pts, w);
+}
+function footpathRun(pts, w) {
+  const pos = [], idx = [];
+  pts.forEach(([x, z], i) => { const [xa, za] = pts[Math.max(i - 1, 0)], [xb, zb] = pts[Math.min(i + 1, pts.length - 1)]; const dx = xb - xa, dz = zb - za, L = Math.hypot(dx, dz) || 1, nx = -dz / L * w / 2, nz = dx / L * w / 2, y = groundY(x, z) + 0.14;
+    pos.push(x - nx, y, z - nz, x + nx, y, z + nz); if (i < pts.length - 1) idx.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2); });
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx);
+  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: new THREE.Color(0.05, 0.047, 0.045), side: THREE.DoubleSide })); city.add(m);
+}
 {
-  const c = COAST.COAST;
+  const c = COAST.COAST, path = [];
   for (let i = 0; i + 1 < c.length; i++) { const [x1, z1] = c[i], [x2, z2] = c[i + 1]; if (!BEACHES[0](x1, z1)) continue; const L = Math.hypot(x2 - x1, z2 - z1); const nx = -(z2 - z1) / L, nz = (x2 - x1) / L;
-    for (let s = 0; s < L; s += 26) { const x = x1 + (x2 - x1) * s / L - nx * 58, z = z1 + (z2 - z1) * s / L - nz * 58; if (!isLand(x, z)) continue; const sp = glowSprite(0xff9a50, 3.2, 0.85); sp.position.set(x, groundY(x, z) + 6, z); city.add(sp); } }
+    for (let s = 0; s < L; s += 13) { const x = x1 + (x2 - x1) * s / L - nx * 58, z = z1 + (z2 - z1) * s / L - nz * 58; if (!isLand(x, z)) continue; path.push([x, z]); if (Math.round(s / 13) % 2 === 0) streetLamp(x, z, [nx, nz]); } }
+  if (path.length > 1) footpath(path);
+  // the esplanade along the wall
+  for (let i = 0; i + 1 < WALL.length; i++) { const [x1, z1] = WALL[i], [x2, z2] = WALL[i + 1]; const L = Math.hypot(x2 - x1, z2 - z1), nx = -(z2 - z1) / L, nz = (x2 - x1) / L; const mx = (x1 + x2) / 2, mz = (z1 + z2) / 2, sg = inCarve(mx + nx * 4, mz + nz * 4) ? -1 : 1;
+    for (let sd = 14; sd < L - 8; sd += 34) streetLamp(x1 + (x2 - x1) * sd / L + nx * sg * 6, z1 + (z2 - z1) * sd / L + nz * sg * 6, [-nx * sg, -nz * sg]);
+    footpath([[x1 + nx * sg * 5, z1 + nz * sg * 5], [x2 + nx * sg * 5, z2 + nz * sg * 5]], 2.2);
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(L + 1, 6, 1.8), new THREE.MeshStandardMaterial({ color: 0x2e2c30, roughness: 0.95, flatShading: true })); wall.position.set(mx - nx * sg * 0.8, 0.9, mz - nz * sg * 0.8); wall.rotation.y = -Math.atan2(z2 - z1, x2 - x1); city.add(wall); }
+  // promenade lamps at the baths
+  for (let k = 0; k < 7; k++) streetLamp(292 + k * 7, -122 + k * 2.2, [0.3, 0.95], 4.6);
 }
 // coal ships waiting offshore
 const shipLights = [];
@@ -834,17 +879,9 @@ const CITIES = {
 const AUS_CITIES = ['newcastle', 'sydney', 'brisbane', 'melbourne', 'canberra', 'tamworth', 'adelaide', 'perth', 'darwin', 'hobart', 'cairns', 'alice', 'townsville', 'broome', 'goldcoast', 'wollongong', 'bourke', 'mtisa', 'wagga'];
 function destPoint(lat, lon, bearing, km) { const d = km / 6371, la = lat * D2R, lo = lon * D2R; const la2 = Math.asin(Math.sin(la) * Math.cos(d) + Math.cos(la) * Math.sin(d) * Math.cos(bearing)); const lo2 = lo + Math.atan2(Math.sin(bearing) * Math.sin(d) * Math.cos(la), Math.cos(d) - Math.sin(la) * Math.sin(la2)); return [la2 / D2R, lo2 / D2R]; }
 function bearingTo(a, b) { const la1 = a[0] * D2R, la2 = b[0] * D2R, dl = (b[1] - a[1]) * D2R; return Math.atan2(Math.sin(dl) * Math.cos(la2), Math.cos(la1) * Math.sin(la2) - Math.sin(la1) * Math.cos(la2) * Math.cos(dl)); }
-// The signal spreads as the left half of the TEDx "x": two arms leave Newcastle towards the north-west (through Darwin) and the
-// south-west (mirror image, through Melbourne). A dense web grows along each arm; the rest of the country only gets a dim web.
-const ARM_KM = T.armKm || 3150;
-const ARM_B = [bearingTo(NEWCASTLE, CITIES.darwin)]; ARM_B.push(3 * Math.PI - ARM_B[0]);
 const web = (() => {
   const pts = [NEWCASTLE], cls = [1];
-  for (let i = 0; i < 14000 && pts.length < 620; i++) { const km = 3 * Math.pow(4300 / 3, rng()); const p = destPoint(...NEWCASTLE, rng() * Math.PI * 2, km); if (ausLand(...p)) { pts.push(p); cls.push(km < 70 ? 1 : 0); } }
-  for (const b of ARM_B) for (let i = 0, got = 0; i < 6000 && got < 1150; i++) {
-    const s = 8 + (ARM_KM - 8) * Math.pow(rng(), 1.35), sig = 14 + 0.03 * s, lat = (rng() + rng() + rng() - 1.5) * 2 * sig;
-    const p1 = destPoint(...NEWCASTLE, b, s), p = destPoint(p1[0], p1[1], b + Math.PI / 2, lat);
-    if (ausLand(...p)) { pts.push(p); cls.push(1); got++; } }
+  for (let i = 0; i < 14000 && pts.length < 4200; i++) { const km = 3 * Math.pow(4300 / 3, rng()); const p = destPoint(...NEWCASTLE, rng() * Math.PI * 2, km); if (ausLand(...p)) { pts.push(p); cls.push(1); } }
   const cityIdx = {};
   for (const c of AUS_CITIES.slice(1)) { cityIdx[c] = pts.length; pts.push(CITIES[c]); cls.push(1); for (let i = 0; i < 70; i++) { const p = destPoint(...CITIES[c], rng() * Math.PI * 2, 2 * Math.pow(90 / 2, rng())); if (ausLand(...p)) { pts.push(p); cls.push(1); } } }
   const n = pts.length; const xy = pts.map(([la, lo]) => [lo * Math.cos(-28 * D2R) * 111.2, la * 111.2]);
@@ -884,31 +921,7 @@ const webMat = new THREE.ShaderMaterial({
     const br = Math.max(web.cls[i], web.cls[j]) ? 1.0 : 0.3; // corridor webs bright, background web dim
     for (let k = 0; k <= n; k++) { const f = k / n; const v = ang < 1e-7 ? A.clone() : A.clone().multiplyScalar(Math.sin((1 - f) * ang) / Math.sin(ang)).add(B.clone().multiplyScalar(Math.sin(f * ang) / Math.sin(ang))); pts.push(v.normalize().multiplyScalar(R * 1.0004)); d.push(Math.min(web.d[i] + f * km, web.d[j] + (1 - f) * km)); s.push(br); }
     polys.push({ pts, d, s }); }
-  // the two arms of the half-x: straight rays that lead the web, running on over the sea where there is no land
-  for (const b of ARM_B) { const pts = [], d = [], s = [];
-    for (let km = 0; km <= ARM_KM; km += 30) { pts.push(ll(...destPoint(...NEWCASTLE, b, km), R * 1.0008)); d.push(km * 0.82); s.push(1.5); }
-    polys.push({ pts, d, s }); }
   const m = new THREE.Mesh(buildStrips(polys), webMat); m.frustumCulled = false; m.renderOrder = 2; globe.add(m);
-}
-// soft light ribbons along the two arms, over land and sea alike, so the shape of the half-x reads even where there is no land to carry the web
-const armMat = new THREE.ShaderMaterial({
-  uniforms: { uFront: webMat.uniforms.uFront, uFade: webMat.uniforms.uFade, uArm: { value: 0 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-  vertexShader: `attribute float aD; attribute float aU; varying float vD; varying float vU; void main(){ vD = aD; vU = aU; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
-  fragmentShader: `uniform float uFront; uniform float uFade; uniform float uArm; varying float vD; varying float vU;
-    void main(){ float x = uFront - vD; if (x < 0.0 || uArm <= 0.0) discard; float e = 1.0 - vU*vU; e *= e; float hw = 8.0 + uFront*0.05; float head = exp(-pow(x/hw, 2.0));
-      vec3 c = vec3(0.831,0.0,0.03)*(0.05 + 0.34*e) + vec3(1.0,0.35,0.35)*head*e*0.9; gl_FragColor = vec4(c*uFade*uArm, 1.0); }`
-});
-{
-  const pos = [], dd = [], uu = [], idx = []; const half = (T.armHalfKm || 80) / 6371;
-  for (const b of ARM_B) { const base = pos.length / 3;
-    for (let km = 0, k = 0; km <= ARM_KM; km += 20, k++) {
-      const c = ll(...destPoint(...NEWCASTLE, b, km), 1), c2 = ll(...destPoint(...NEWCASTLE, b, km + 10), 1), c0 = ll(...destPoint(...NEWCASTLE, b, Math.max(km - 10, 0)), 1);
-      const lat = new THREE.Vector3().crossVectors(c, c2.clone().sub(c0)).normalize().multiplyScalar(Math.tan(half));
-      for (const sd of [-1, 1]) { const v = c.clone().add(lat.clone().multiplyScalar(sd)).normalize().multiplyScalar(R * 1.0009); pos.push(v.x, v.y, v.z); dd.push(km * 0.82); uu.push(sd); }
-      if (km < ARM_KM) { const i = base + k * 2; idx.push(i, i + 1, i + 2, i + 1, i + 3, i + 2); }
-    } }
-  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aD', new THREE.Float32BufferAttribute(dd, 1)); g.setAttribute('aU', new THREE.Float32BufferAttribute(uu, 1)); g.setIndex(idx);
-  const m = new THREE.Mesh(g, armMat); m.frustumCulled = false; m.renderOrder = 1; globe.add(m);
 }
 
 // ================================================================ camera + fronts
@@ -931,8 +944,8 @@ const arcMat = () => new THREE.ShaderMaterial({
       float e = 1.0 - vSide*vSide; vec3 col = (vec3(0.831,0.01,0.05)*trail + vec3(1.0,0.6,0.6)*head*2.2) * e * uFade; gl_FragColor = vec4(col, 1.0); }`
 });
 const arcs = [];
-// world arcs wait until the arms of the half-x have run nearly to their tips (the web has reached the coasts)
-const T_WORLD = (() => { let t = T.web0; while (t < DURATION && webFront(t) < (T.worldFrac || 0.92) * ARM_KM) t += 0.01; return t; })();
+// world arcs wait until the web has spread out to the far coasts
+const T_WORLD = (() => { let t = T.web0; while (t < DURATION && webFront(t) < (T.worldKm || 3300)) t += 0.01; return t; })();
 {
   const pending = HOPS.slice();
   while (pending.length) { const i = pending.findIndex(([a]) => a in arrival); if (i < 0) break; const [a, b] = pending.splice(i, 1)[0];
@@ -958,11 +971,12 @@ const ORB_AIM = ORB.clone().add(V3(0, 2.6, 0));
 const ALT0 = 1.5;                                                // camera height above the aim point when the glide ends
 const END_D = 14.5;                                              // ...and its distance from the orb
 const END_POS = ORB_AIM.clone().add(CAMDIR.clone().multiplyScalar(END_D)).add(V3(0, ALT0, 0));
-const onFinal = (d, h) => END_POS.clone().add(CAMDIR.clone().multiplyScalar(d)).setY(h);  // a point d metres back along the final run, at absolute height h
-const APP_PTS = [ // in from the sea past Nobbys, down the seaward side of the headland past Fort Scratchley, round the Ocean Baths and across the bay to the beach
-  V3(1450, 102, -1420), V3(1290, 98, -1330), V3(1140, 92, -1245), V3(930, 88, -1040), V3(750, 82, -840), V3(630, 76, -640),
-  V3(585, 70, -450), V3(545, 62, -280), V3(510, 54, -130), onFinal(470, 40), onFinal(300, 26), onFinal(170, 17), onFinal(80, 11), onFinal(30, 7), END_POS.clone(),
-];
+const APP_PTS = (() => { // a single arc: a straight chord from the sea off Nobbys to the beach, bowed out to sea around the headland and the baths, descending late
+  const P0 = V3(1330, 0, -1385), cx = END_POS.x - P0.x, cz = END_POS.z - P0.z, cl = Math.hypot(cx, cz), px = cz / cl, pz = -cx / cl, BOW = 400; // px,pz: perpendicular, towards the sea
+  const pts = [];
+  for (let k = 0; k <= 40; k++) { const u = k / 40, b = BOW * Math.sin(Math.PI * Math.pow(u, 3.2));
+    pts.push(V3(P0.x + cx * u + px * b, END_POS.y + (84 - END_POS.y) * (1 - smoother(0.4, 1, u)), P0.z + cz * u + pz * b)); }
+  pts[40] = END_POS.clone(); return pts; })();
 const appCurve = new THREE.CatmullRomCurve3(APP_PTS, false, 'centripetal');
 const appLen = appCurve.getLength();
 const LOOK_AHEAD = 240; // metres of flight path the camera looks ahead along
@@ -1010,17 +1024,20 @@ const rtOpts = { type: THREE.HalfFloatType, samples: MSAA };
 class DualScenePass extends Pass {
   constructor() {
     super(); this.rtA = new THREE.WebGLRenderTarget(W, H, rtOpts); this.rtB = new THREE.WebGLRenderTarget(W, H, rtOpts); this.mix = 0; this.needsSwap = true;
-    this.mat = new THREE.ShaderMaterial({ uniforms: { tA: { value: null }, tB: { value: null }, uMix: { value: 0 } },
+    this.blur = 0; this.shake = [0, 0]; this.zA = 1; this.zB = 1;
+    this.mat = new THREE.ShaderMaterial({ uniforms: { tA: { value: null }, tB: { value: null }, uMix: { value: 0 }, uBlur: { value: 0 }, uShake: { value: new THREE.Vector2() }, uZA: { value: 1 }, uZB: { value: 1 } },
       vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }`,
-      fragmentShader: `uniform sampler2D tA, tB; uniform float uMix; varying vec2 vUv;
+      fragmentShader: `uniform sampler2D tA, tB; uniform float uMix, uBlur, uZA, uZB; uniform vec2 uShake; varying vec2 vUv;
         vec4 sane(vec4 c){ return (any(isnan(c)) || any(isinf(c))) ? vec4(0.) : min(max(c, vec4(0.)), vec4(40.)); }
-        void main(){ vec4 a = sane(texture2D(tA, vUv)), b = sane(texture2D(tB, vUv)); gl_FragColor = uMix <= 0.0 ? a : (uMix >= 1.0 ? b : mix(a, b, uMix) + max(a,b)*0.25*sin(3.14159*uMix)); }` });
+        vec4 zoomBlur(sampler2D tx, float z){ vec4 acc = vec4(0.); for (int i = 0; i < 28; i++) { float k = float(i)/27.0; vec2 p = vec2(0.5) + (vUv - 0.5)*z*(1.0 - uBlur*k) + uShake; acc += sane(texture2D(tx, p)); } return acc/28.0; }
+        void main(){ vec4 a, b; if (uBlur > 0.001) { a = zoomBlur(tA, uZA); b = zoomBlur(tB, uZB); } else { a = sane(texture2D(tA, vUv)); b = sane(texture2D(tB, vUv)); } gl_FragColor = uMix <= 0.0 ? a : (uMix >= 1.0 ? b : mix(a, b, uMix) + max(a,b)*0.25*sin(3.14159*uMix)); }` });
     this.fsq = new FullScreenQuad(this.mat);
   }
   render(renderer, writeBuffer) {
     if (this.mix < 1) { renderer.setRenderTarget(this.rtA); renderer.clear(); renderer.render(city, cityCam); }
     if (this.mix > 0) { renderer.setRenderTarget(this.rtB); renderer.clear(); renderer.render(globe, globeCam); }
     this.mat.uniforms.tA.value = this.rtA.texture; this.mat.uniforms.tB.value = this.rtB.texture; this.mat.uniforms.uMix.value = this.mix;
+    this.mat.uniforms.uBlur.value = this.blur; this.mat.uniforms.uShake.value.set(this.shake[0], this.shake[1]); this.mat.uniforms.uZA.value = this.zA; this.mat.uniforms.uZB.value = this.zB;
     renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer); this.fsq.render(renderer);
   }
 }
@@ -1035,7 +1052,8 @@ const grade = new ShaderPass({
   float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233)))*43758.5453); }
   void main(){ vec2 c = vUv - 0.5; float r2 = dot(c,c); vec2 off = c * r2 * 0.012;
     vec3 col = vec3(texture2D(tDiffuse, vUv + off).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - off).b);
-    col *= 1.0 - smoothstep(0.08, 0.62, r2) * 0.75;
+    col = pow(max(col, vec3(0.0)), vec3(0.95)); // lift the shadows a touch
+    col *= 1.0 - smoothstep(0.08, 0.62, r2) * 0.7;
     col += vec3(1.0,0.25,0.3) * uFlash;
     col += (h(vUv*vec2(1733.,977.) + fract(uTime*7.13)) - 0.5) * 0.012;
     gl_FragColor = vec4(col, 1.0); }`
@@ -1121,7 +1139,6 @@ function frame(t) {
   beam.rotation.y = 1.4 + t * 0.85;
   if (window.__flag) { const p = window.__flag.geometry.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i) + 2; p.setZ(i, Math.sin(x * 1.6 - t * 6) * 0.25 * (x / 4)); } p.needsUpdate = true; }
   shipLights.forEach((s, i) => { s.material.opacity = 0.5 + 0.5 * Math.max(0, Math.sin(t * 3 + i * 1.7)); });
-  navA.material.opacity = Math.sin(t * 4) > 0 ? 1 : 0.25; navB.material.opacity = Math.sin(t * 4 + 2) > 0 ? 1 : 0.25;
 
   // ---------------- globe
   const gs = globeShot(t); setCam(globeCam, gs, gs.up);
@@ -1131,7 +1148,6 @@ function frame(t) {
   const dim = 1 - 0.72 * smoother(T.dim[0], T.dim[1], t);
   GU.uBright.value = dim;
   atmoMat.uniforms.uA.value = smooth(T.web0 + 0.9, T.web0 + 1.9, t) * dim * 0.6;
-  armMat.uniforms.uArm.value = smoother(Math.log(1.5e6), Math.log(4e6), Math.log(altAt(t)));
   webMat.uniforms.uFront.value = webFront(t); webMat.uniforms.uFade.value = dim;
   webMat.uniforms.uWidth.value = Math.max(1.8, (2.4 + 1.6 * (1 - smooth(T.web0 + 0.5, T.web0 + 2.5, t))) * SC * 2);
   const camDist = p => globeCam.position.distanceTo(p);
@@ -1146,6 +1162,9 @@ function frame(t) {
 
   // ---------------- composite
   dual.mix = smooth(T.xfade[0], T.xfade[1], t);
+  { const m = dual.mix, bell = Math.sin(Math.PI * m); // a fast punch through the cut: both scenes zoom, blur radially and shake
+    dual.blur = 0.38 * bell; dual.zA = 1 - 0.28 * m * m; dual.zB = 1 - 0.28 * (1 - m) * (1 - m) * (m > 0 ? 1 : 0);
+    dual.shake = [0.007 * bell * Math.sin(t * 93.0), 0.007 * bell * Math.cos(t * 71.0)]; }
   grade.uniforms.uTime.value = t;
   bloom.strength = 0.5;
   grade.uniforms.uFlash.value = 0.05 * Math.exp(-Math.pow((t - T.impact - 0.03) / 0.07, 2));
