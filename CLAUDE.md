@@ -12,11 +12,11 @@ Read README.md first (purpose, goals, beats, creative decisions). Key facts for 
 
 - The orb is born at `ORB` (Newcastle Beach sand) and the street front starts there (`IMPACT_OFF` = beach to the first street). No people or rigged models.
 - Camera: `cityShot` is the approach spline (`APP_PTS`: one arc from the sea to the beach, look-ahead along the path, no pans) then `riseShot`, driven by the `alt` keys (tilt, swing and aim all follow height). The camera looks at `FOCUS` (the arc's locus) and the aim drifts onto the orb; keep the look turn under about 8 deg/s (`node speed.js` prints it). Check path changes with `node asciimap.js ...`, `node probe.js --path 1 ...` and `node speed.js`. Keep cruise speed and yaw gentle: the old camera was judged too fast and janky.
-- Edited geography: `CARVE`/`WALL` turn the plateau between the fort and the baths into sea with a retaining wall and an esplanade; `inNob` clears the Nobbys peninsula of roads, buildings and procedural suburbs (the peninsula's coastline itself must stay true to the OSM data; do not carve it). Do not add cottages, lights or small structures there. Roads, buildings and the land mask all respect these, so change the polygons rather than patching individual objects.
+- Geography: the coastline is exactly the OSM data. Never carve, fill or reshape it (rounds that did were rejected for wrong scale and geography). `inNob` only keeps roads, buildings and procedural suburbs off the Nobbys peninsula; Shortland Esplanade is a class 8 road along the real coast (no lamps, no buildings).
 - Lamps: use `streetLamp(x, z, lean)` (pole, arm, head, glow, flat light pool) and `footpath(points)`. No floating glow orbs for street lights.
 - Lighting is deliberately low: a modest ambient lift only. When tuning, compare with the night mood in the README before brightening anything (an earlier pass was far too bright).
 - The web across Australia is the original sprawl (log-radial points, nearest-neighbour edges). The half-"x" shape was tried and rejected.
-- City to globe uses a zoom-blur and shake in `DualScenePass` (`blur`, `shake`, `zA`, `zB`, set in `frame()` from `T.xfade`).
+- The impact is a screen-space sound-wave distortion in the `grade` pass (`uTau`, ground-plane rings reconstructed from the camera), not light rings; keep light effects minimal there. City to globe uses a zoom-blur and shake in `DualScenePass` (`blur`, `shake`, `zA`, `zB`, set in `frame()` from `T.xfade`).
 - Outro: `bgOut` fades the WebGL canvas, `fadeOut` fades the whole stage to black. Both are read from `timelines.json`.
 
 ## Tooling

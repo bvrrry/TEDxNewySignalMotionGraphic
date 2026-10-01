@@ -23,9 +23,9 @@ Final format: 3840 x 2160, 30 fps, H.264 with AAC audio.
 
 ## The long cut, beat by beat
 
-1. **0 to 20 s, the glide.** From the sea off Nobbys lighthouse, one wide arc: past the lighthouse and its sweeping beam, round Fort Scratchley, bowing out around the Ocean Baths headland, then a straight run in over the bay to Newcastle Beach. The camera goes wide but keeps looking in at the centre of the arc (the east end of the city), then the aim drifts onto the orb as it eases to a stop. Look direction turns at 8 degrees per second or less.
+1. **0 to 20 s, the glide.** Fades in from black with the camera already moving, straight toward Nobbys lighthouse (the tower and its sweeping beam are the opening image), then past it, round Fort Scratchley, bowing out around the Ocean Baths headland, and a straight run in over the bay to Newcastle Beach. The camera goes wide but keeps looking in at the centre of the arc (the east end of the city), then the aim drifts onto the orb as it eases to a stop.
 2. **14 to 22 s, the orb is born.** A glow and fine rings in the sand draw in light filaments and motes that spiral up into an orb. It floats up, then drops back into the ground.
-3. **22.7 to 30 s, the signal spreads.** The orb hits the ground with a short camera shake and fast ripples through the sand; streets, then buildings, light outward while the camera rises quickly at first in one continuous move, tilting and swinging round to a top-down view of the city.
+3. **22.7 to 30 s, the signal spreads.** As the orb enters the ground a short camera shake and one or two pressure waves distort the picture like a sound wave (screen-space ripple in the grade pass), while the zoom-out kicks in and the camera tilt, swing and aim begin together with it, all driven by height so they are simultaneous and smooth. Streets, then buildings, light outward while the camera keeps rising to a top-down view of the city.
 4. **30.3 to 31 s, city to globe.** A fast zoom-blur punch with a little shake hides the change from detailed map to the satellite view.
 5. **31 to 38.7 s, across the country, then the world.** The zoom-out from the state to the whole country is very quick (about 2 s, eased in and out), then slows into a rotation round the earth. A web sprawls out from Newcastle across Australia, reaching the other cities one by one, then arcs fly out to the rest of the world.
 6. **38.7 to 46.1 s, home.** The orb returns and lands as the dot of the "i". The planet and background fade, the text holds for a moment, then fades to black.
@@ -36,12 +36,12 @@ These came out of review and should carry forward:
 
 - **Camera:** slow, smooth, one wide arc that keeps its focus on the locus of the arc (`FOCUS`); never fast or jerky. It may stay a little off the coast at the headlands.
 - **No people.** The orb forms from the ground. (An earlier mannequin was dropped.)
-- **Geography follows the real coastline.** Nobbys Head, Nobbys Beach, the peninsula and Fort Scratchley are as in the OpenStreetMap data (a round-3 attempt to submerge the peninsula made the lighthouse sit on a strange long stretch and was reverted). The Nobbys peninsula has no cottages, lights or small structures. The only edit is that the empty plateau between the fort and the Ocean Baths is open sea against a retaining wall with the esplanade (road, footpath, street lamps) on top. The Ocean Baths are one rectangular pool and one circular pool. See `CARVE`, `WALL`, `inNob` and the Nobbys block in the land mask in `main.js`.
+- **Geography follows the real coastline, exactly.** The coast, Nobbys Head and breakwall, Nobbys Beach, Fort Scratchley, the baths and Newcastle Beach are as in the OpenStreetMap data. Edits to the coast in earlier rounds (carving a plateau into sea, submerging the Nobbys peninsula) made the scale and geography wrong and were reverted: do not reshape the coastline. What is kept: the Nobbys peninsula has no cottages, lights or small structures; Shortland Esplanade runs along the real coast from the fort to Nobbys Beach as a plain road that lights up with the signal (class 8: no lamps, no buildings).
 - **Street lights are real-looking lamps on poles** along the beach footpath and the wall esplanade, not floating glow orbs.
 - **Lighting:** a modest ambient lift so the baths, sea and buildings read, without losing the night mood. Windows are warm amber with a few red-orange ones, and glow a little.
 - **The spread is a sprawl** over the whole country (not a letter shape). It must reach the coasts before the world arcs begin.
 - **Outro:** planet and background fade first, the text holds 1 to 2 s, then everything fades to black. The text stays up longer than it did originally.
-- **Audio:** cinematic (drone, pads, choir, braam hits, bells on each city, long reverb) with a subtle beat for energy. Soundtrack is finalised last, after the picture is locked.
+- **Audio:** two cinematic takes to choose from. Take A (`audio.py`) is dark and drone-led (sub drone, saw pads, choir, braam hits, subtle beat). Take B (`audio_b.py`) is more musical: a felt-piano arpeggio in A minor, string pads, taiko-style drums building to the impact, staccato strings through the rise, lifting to A major at the title. Both have bells on each city and a long reverb. The soundtrack is finalised last, after the picture is locked.
 
 ## Where things live
 
@@ -61,7 +61,7 @@ All timings are in `timelines.json` (per cut); `main.js` reads them, so re-timin
 - `main.js`: the whole scene. Land masks, terrain, OSM streets and buildings, landmarks, beach lamps and footpaths, the orb and its effects, the street front, the globe, the Australia web, world arcs, post-processing, the title overlay. `window.renderFrame(t)` renders time `t` deterministically.
 - `timelines.json`: every timing and camera key for both cuts.
 - `render.js`: puppeteer driver. Renders stills or an MP4 at any resolution and writes `events_<cut>.json` (city arrival times, arcs, world timing) for the audio.
-- `audio.py`: synthesised sound design, timed from `timelines.json` and `events_<cut>.json`.
+- `audio.py`, `audio_b.py`: two synthesised sound designs (take A and take B), timed from `timelines.json` and `events_<cut>.json`. Output `signal_audio_<cut>.wav` and `signal_audio_<cut>_b.wav`.
 - `preview.html`, `start_preview.bat`: live scrub preview.
 - `probe.js`, `asciimap.js`, `speed.js`: dev tools (render from any camera with the flight path drawn; ASCII land/sea map with the path; flight speed and height profile).
 - `data/`: OpenStreetMap extracts (coastline, harbour, breakwalls, streets, building footprints) in local metres. Origin -32.9305, 151.7870 (Newcastle Beach); x east, z south.

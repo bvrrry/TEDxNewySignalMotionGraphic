@@ -114,10 +114,8 @@ const COAST = {}; const BREAKS = [];
 for (const l of lines(await txt('data/coast.txt'))) { const [tag, ...rest] = l.split(' '); const pts = rest.map(p => p.split(',').map(Number)); if (tag === 'BREAK') BREAKS.push(pts); else COAST[tag] = pts; }
 // Edited geography (see README, "Creative decisions"): the dark plateau between Fort Scratchley and the Ocean Baths is open sea,
 // banging against a retaining wall with the esplanade on top; the Nobbys peninsula and breakwall are just hill and lighthouse.
-const CARVE = [[300, -425], [650, -400], [900, -400], [900, -125], [450, -125], [230, -135], [240, -190], [275, -250], [292, -330]];
-const WALL = [[300, -425], [292, -330], [275, -250], [240, -190], [230, -135], [450, -125]]; // the new shoreline, as a polyline
 function inPoly(x, z, P) { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, zi] = P[i], [xj, zj] = P[j]; if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c; } return c; }
-const inCarve = (x, z) => inPoly(x, z, CARVE);
+const inCarve = () => false; // (the coast is left exactly as in the OpenStreetMap data; only the Nobbys peninsula is kept clear of roads and buildings)
 const inNob = (x, z) => x > 430 && z < -540 && x < 2200;
 const ROADS = [];
 for (const l of lines(await txt('data/roads.txt'))) { const cls = +l[0]; const toks = l.slice(1).split(' '); const p0 = toks[0].split(',').map(Number); const pts = [p0]; for (let i = 1; i < toks.length; i++) { const [dx, dz] = toks[i].split(',').map(Number); const q = pts[pts.length - 1]; pts.push([q[0] + dx, q[1] + dz]); } let run = []; for (const p of pts) { if (inCarve(p[0], p[1]) || inNob(p[0], p[1])) { if (run.length > 1) ROADS.push({ cls, pts: run }); run = []; } else run.push(p); } if (run.length > 1) ROADS.push({ cls, pts: run }); }
@@ -136,7 +134,6 @@ const cLand = document.createElement('canvas'); cLand.width = cLand.height = MRE
   const c = COAST.COAST; const closed = c.concat([[2161, -9000], [-9000, -9000], [-9000, 9000], [-3430, 9000]]);
   pathPoly(g, closed); g.fill();
   g.fillStyle = '#000'; pathPoly(g, COAST.HARBOUR); g.fill();
-  g.fillStyle = '#000'; pathPoly(g, CARVE); g.fill();
   g.fillStyle = '#fff'; for (const b of BREAKS) { pathPoly(g, b); g.fill(); }
 }
 const BEACHES = [ // coastline stretches that are sand
@@ -191,7 +188,6 @@ function isLand(x, z) {
   return bigPix[pz * BRES + px] > 127;
 }
 const isSand = (x, z) => inCore(x, z) ? sandPix[Math.floor(mpz(z)) * MRES + Math.floor(mpx(x))] > 60 : false;
-function distToWall(x, z) { let best = 1e9; for (let i = 0; i + 1 < WALL.length; i++) { const [x1, z1] = WALL[i], [x2, z2] = WALL[i + 1]; const dx = x2 - x1, dz = z2 - z1; const t = clamp(((x - x1) * dx + (z - z1) * dz) / (dx * dx + dz * dz)); best = Math.min(best, Math.hypot(x - (x1 + dx * t), z - (z1 + dz * t))); } return best; }
 // terrain (hand-tuned hills: Nobbys head, Flagstaff Hill, The Hill, Shepherds Hill, Cooks Hill)
 const gauss = (x, z, cx, cz, s) => Math.exp(-((x - cx) ** 2 + (z - cz) ** 2) / (2 * s * s));
 function terrainH(x, z) {
@@ -200,7 +196,6 @@ function terrainH(x, z) {
     + 10 * gauss(x, z, -6000, -4000, 3000) + 25 * gauss(x, z, -9000, 2000, 6000);
   h += 3 * Math.sin(x * 0.0021 + 1.3) * Math.sin(z * 0.0017 - 0.4);
   h *= 0.15 + 0.85 * smooth(90, 320, Math.hypot(x + 94, z + 42)); // keep Newcastle Beach flat around the orb
-  { const dw = distToWall(x, z); h = lerp(3.6, h, smooth(8, 110, dw)); }
   return Math.max(0.4, h);
 }
 function sandSoft(x, z) { if (!inCore(x, z)) return 0; const px = Math.floor((x - MX0) / (MX1 - MX0) * 1024), pz = Math.floor((z - MZ0) / (MZ1 - MZ0) * 1024); return clamp(sandSoftPix[pz * 1024 + px] / 160); }
@@ -334,15 +329,15 @@ for (const r of ROADS) { let prev = -1; for (const [x, z] of r.pts) { const id =
       if (j === k || n.adj.some(([v]) => v === j)) continue; const d = (nodes[j].x - n.x) ** 2 + (nodes[j].z - n.z) ** 2; if (d < bd) { bd = d; best = j; } }
     if (best >= 0) addEdge(k, best, 4); }
 }
-{ // esplanade along the retaining wall
-  const road = []; for (let i = 0; i + 1 < WALL.length; i++) { const [x1, z1] = WALL[i], [x2, z2] = WALL[i + 1]; const L = Math.hypot(x2 - x1, z2 - z1), nx = -(z2 - z1) / L, nz = (x2 - x1) / L;
-    const mx = (x1 + x2) / 2, mz = (z1 + z2) / 2, sg = inCarve(mx + nx * 4, mz + nz * 4) ? -1 : 1;
-    for (let sdist = 0; sdist < L; sdist += 22) road.push([x1 + (x2 - x1) * sdist / L + nx * sg * 9, z1 + (z2 - z1) * sdist / L + nz * sg * 9]); }
-  road.push([WALL[WALL.length - 1][0] + 0, WALL[WALL.length - 1][1] + 9]);
-  const n0 = nodes.length; let prev = -1;
-  for (const [x, z] of road) { const id = nodeAt(x, z); if (prev >= 0) addEdge(prev, id, 2); prev = id; }
-  const link = (id) => { let b = -1, bd = 1e18; for (let k = 0; k < n0; k++) { if (inCarve(nodes[k].x, nodes[k].z)) continue; const d = (nodes[k].x - nodes[id].x) ** 2 + (nodes[k].z - nodes[id].z) ** 2; if (d < bd) { bd = d; b = k; } } if (b >= 0) addEdge(id, b, 3); };
-  link(n0); link(nodes.length - 1); for (let k = n0 + 6; k < nodes.length - 3; k += 6) link(k);
+{ // Shortland Esplanade along the real coast, from the fort round to Nobbys Beach
+  const c = COAST.COAST, n0 = nodes.length; let prev = -1, first = -1;
+  const inZone = (x, z) => x > 400 && x < 1150 && z > -1230 && z < -470;
+  for (let i = 0; i + 1 < c.length; i++) { const [x1, z1] = c[i], [x2, z2] = c[i + 1];
+    if (!inZone(x1, z1) || !inZone(x2, z2)) { prev = -1; continue; }
+    const L = Math.hypot(x2 - x1, z2 - z1) || 1, nx = -(z2 - z1) / L, nz = (x2 - x1) / L, mx = (x1 + x2) / 2, mz = (z1 + z2) / 2, sg = isLand(mx + nx * 12, mz + nz * 12) ? 1 : -1;
+    for (let sd = 0; sd < L; sd += 26) { const x = x1 + (x2 - x1) * sd / L + nx * sg * 14, z = z1 + (z2 - z1) * sd / L + nz * sg * 14; if (!isLand(x, z)) { prev = -1; continue; }
+      const id = nodeAt(x, z); if (first < 0) first = id; if (prev >= 0 && prev !== id) addEdge(prev, id, 8); prev = id; } }
+  if (first >= 0) { let b = -1, bd = 1e18; for (let k = 0; k < n0; k++) { const d = (nodes[k].x - nodes[first].x) ** 2 + (nodes[k].z - nodes[first].z) ** 2; if (d < bd) { bd = d; b = k; } } if (b >= 0) addEdge(first, b, 8); }
 }
 const realCount = nodes.length;
 const CITY_C = V3(-900, 0, 150);
@@ -414,7 +409,7 @@ const roadMat = new THREE.ShaderMaterial({
     gl_FragColor = vec4(col, 1.0);
   }`
 });
-const WIDTH = { 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 9: 4.5 };
+const WIDTH = { 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 8: 4, 9: 4.5 };
 {
   const pos = [], dir = [], side = [], dd = [], ww = [], idx = []; let vi = 0;
   for (const [a, b, L, cls] of edges) {
@@ -447,7 +442,7 @@ const lampMat = new THREE.ShaderMaterial({
 });
 {
   const p = [], d = [];
-  for (const [a, b, L, cls] of edges) { if (cls === 9 || !isFinite(dist[a])) continue; const A = nodes[a], B = nodes[b]; const n = Math.floor(L / 34);
+  for (const [a, b, L, cls] of edges) { if (cls >= 8 || !isFinite(dist[a])) continue; const A = nodes[a], B = nodes[b]; const n = Math.floor(L / 34);
     for (let k = 0; k < n; k++) { const s = (k + 0.5) / n; const x = lerp(A.x, B.x, s), z = lerp(A.z, B.z, s); p.push(x, groundY(x, z) + 7, z); d.push(Math.min(dist[a] + s * L, dist[b] + (1 - s) * L)); } }
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3)); g.setAttribute('aD', new THREE.Float32BufferAttribute(d, 1));
   const pts = new THREE.Points(g, lampMat); pts.frustumCulled = false; pts.renderOrder = 3; city.add(pts);
@@ -486,7 +481,7 @@ for (const b of OSMB) {
   for (let u = -b.w / 2; u <= b.w / 2; u += 6) for (let v = -b.d / 2; v <= b.d / 2; v += 6) occ.add(occKey(b.x + u * c - v * s, b.z + u * s + v * c));
 }
 for (const [a, b, L, cls] of edges) { // procedural buildings lining real streets outside the OSM footprint area
-  if (cls === 9) continue; const A = nodes[a], B = nodes[b]; const dx = (B.x - A.x) / L, dz = (B.z - A.z) / L; const ang = Math.atan2(dz, dx);
+  if (cls >= 8) continue; const A = nodes[a], B = nodes[b]; const dx = (B.x - A.x) / L, dz = (B.z - A.z) / L; const ang = Math.atan2(dz, dx);
   for (let s = 8; s < L - 8; s += 13) for (const sd of [-1, 1]) {
     const off = (WIDTH[cls] || 3) / 2 + 9 + rng() * 5;
     const x = A.x + dx * s - dz * off * sd, z = A.z + dz * s + dx * off * sd;
@@ -565,12 +560,13 @@ function pitchedRoof(w, d) { const g = new THREE.CylinderGeometry(0.01, d * 0.66
 // Nobbys lighthouse + cottages + rotating beam
 const NOB = V3(1066, 0, -1324); NOB.y = terrainH(NOB.x, NOB.z);
 {
-  const towerMat = new THREE.MeshStandardMaterial({ color: 0xbfbab0, emissive: 0x6a655e, emissiveIntensity: 0.45, roughness: 0.6 });
+  const towerMat = new THREE.MeshStandardMaterial({ color: 0xbfbab0, emissive: 0xa8a49c, emissiveIntensity: 0.9, roughness: 0.6 });
   const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 2.3, 9.8, 20), towerMat); tower.position.set(NOB.x, NOB.y + 4.9, NOB.z); city.add(tower);
   const gallery = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 0.5, 20), darkMat); gallery.position.set(NOB.x, NOB.y + 9.9, NOB.z); city.add(gallery);
   const cap = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 1.8, 16), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 1.4, 1.2) })); cap.position.set(NOB.x, NOB.y + 11, NOB.z); city.add(cap);
   const dome = new THREE.Mesh(new THREE.SphereGeometry(1.35, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), darkMat); dome.position.set(NOB.x, NOB.y + 11.9, NOB.z); city.add(dome);
-  const lamp = glowSprite(0xfff0dd, 16, 1.3); lamp.position.set(NOB.x, NOB.y + 11, NOB.z); city.add(lamp);
+  const lamp = glowSprite(0xfff0dd, 22, 1.5);
+  const base = glowSprite(0xffe6c0, 26, 0.35, TEX_SOFT); base.position.set(NOB.x, NOB.y + 5, NOB.z); city.add(base); // the tower stands in its own soft light lamp.position.set(NOB.x, NOB.y + 11, NOB.z); city.add(lamp);
 }
 const beamMat = new THREE.ShaderMaterial({
   transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
@@ -653,13 +649,8 @@ function footpathRun(pts, w) {
   for (let i = 0; i + 1 < c.length; i++) { const [x1, z1] = c[i], [x2, z2] = c[i + 1]; if (!BEACHES[0](x1, z1)) continue; const L = Math.hypot(x2 - x1, z2 - z1); const nx = -(z2 - z1) / L, nz = (x2 - x1) / L;
     for (let s = 0; s < L; s += 13) { const x = x1 + (x2 - x1) * s / L - nx * 58, z = z1 + (z2 - z1) * s / L - nz * 58; if (!isLand(x, z)) continue; path.push([x, z]); if (Math.round(s / 13) % 2 === 0 && Math.hypot(x - ORB.x, z - ORB.z) > 65) streetLamp(x, z, [nx, nz]); } }
   if (path.length > 1) footpath(path);
-  // the esplanade along the wall
-  for (let i = 0; i + 1 < WALL.length; i++) { const [x1, z1] = WALL[i], [x2, z2] = WALL[i + 1]; const L = Math.hypot(x2 - x1, z2 - z1), nx = -(z2 - z1) / L, nz = (x2 - x1) / L; const mx = (x1 + x2) / 2, mz = (z1 + z2) / 2, sg = inCarve(mx + nx * 4, mz + nz * 4) ? -1 : 1;
-    for (let sd = 14; sd < L - 8; sd += 34) streetLamp(x1 + (x2 - x1) * sd / L + nx * sg * 6, z1 + (z2 - z1) * sd / L + nz * sg * 6, [-nx * sg, -nz * sg]);
-    footpath([[x1 + nx * sg * 5, z1 + nz * sg * 5], [x2 + nx * sg * 5, z2 + nz * sg * 5]], 2.2);
-    const wall = new THREE.Mesh(new THREE.BoxGeometry(L + 1, 6, 1.8), new THREE.MeshStandardMaterial({ color: 0x2e2c30, roughness: 0.95, flatShading: true })); wall.position.set(mx - nx * sg * 0.8, 0.9, mz - nz * sg * 0.8); wall.rotation.y = -Math.atan2(z2 - z1, x2 - x1); city.add(wall); }
   // promenade lamps at the baths
-  for (let k = 0; k < 7; k++) streetLamp(292 + k * 7, -122 + k * 2.2, [0.3, 0.95], 4.6);
+  for (let k = 0; k < 6; k++) streetLamp(300 + k * 7, -114 + k * 2.2, [0.3, 0.95], 4.6);
 }
 // coal ships waiting offshore
 const shipLights = [];
@@ -774,7 +765,7 @@ const shockMat = new THREE.ShaderMaterial({
       for (int i = 0; i < 6; i++) { float tr = uTau - 0.13*float(i); if (tr <= 0.0) continue; float R = 520.0*(1.0 - exp(-tr/0.75)); float w = 1.2 + 0.035*R; a += exp(-pow((r-R)/w, 2.0)) * exp(-tr/0.9) / (1.0 + 0.3*float(i)); }
       vec3 c = mix(vec3(0.9,0.05,0.1), vec3(1.0,0.7,0.7), clamp(a - 0.8, 0.0, 1.0)); gl_FragColor = vec4(c*a*1.5*smoothstep(1500.0, 0.0, r), 1.0); }`
 });
-const shock = new THREE.Mesh(new THREE.PlaneGeometry(1600, 1600).rotateX(-Math.PI / 2), shockMat); shock.position.copy(ORB).setY(ORB.y + 0.25); shock.renderOrder = 2; shock.frustumCulled = false; city.add(shock);
+const shock = new THREE.Mesh(new THREE.PlaneGeometry(1600, 1600).rotateX(-Math.PI / 2), shockMat); shock.visible = false; shock.position.copy(ORB).setY(ORB.y + 0.25); shock.renderOrder = 2; shock.frustumCulled = false; city.add(shock);
 const column = glowSprite(0xff2a3a, 1, 1, TEX_SOFT); column.center.set(0.5, 0.0); column.position.copy(ORB); column.renderOrder = 5; city.add(column);
 // trail while the orb drops
 const NT = 40;
@@ -981,42 +972,51 @@ const ORB_AIM = ORB.clone().add(V3(0, 2.6, 0));
 const ALT0 = 1.5;                                                // camera height above the aim point when the glide ends
 const END_D = 14.5;                                              // ...and its distance from the orb
 const END_POS = ORB_AIM.clone().add(CAMDIR.clone().multiplyScalar(END_D)).add(V3(0, ALT0, 0));
-const APP_PTS = (() => { // one wide arc from the sea off Nobbys, bowed out round the headland and the baths, then a short straight run in to the orb over the bay
-  const P0 = V3(1260, 0, -1335), T1 = END_POS.clone().add(CAMDIR.clone().multiplyScalar(340)), cx = T1.x - P0.x, cz = T1.z - P0.z, cl = Math.hypot(cx, cz), px = cz / cl, pz = -cx / cl, BOW = 340;
-  const pts = [];
+const APP_PTS = (() => { // moving in from the sea toward Nobbys lighthouse and past it, then one wide arc round the headland and the baths, then a straight run in to the orb over the bay
+  const lead = [V3(1640, 50, -1330), V3(1420, 50, -1255)], P2 = V3(1160, 47, -1195);
+  const T1 = END_POS.clone().add(CAMDIR.clone().multiplyScalar(340)), cx = T1.x - P2.x, cz = T1.z - P2.z, cl = Math.hypot(cx, cz), px = cz / cl, pz = -cx / cl, BOW = 330;
+  const pts = lead.slice();
   for (let k = 0; k <= 34; k++) { const u = k / 34, b = BOW * Math.sin(Math.PI * Math.pow(u, 2.4));
-    pts.push(V3(P0.x + cx * u + px * b, 28 + (84 - 28) * (1 - smoother(0.35, 1, u)), P0.z + cz * u + pz * b)); }
+    pts.push(V3(P2.x + cx * u + px * b, 28 + (48 - 28) * (1 - smoother(0.3, 1, u)), P2.z + cz * u + pz * b)); }
   for (const [d, h] of [[220, 16], [130, 10], [70, 7.5], [30, 6]]) pts.push(END_POS.clone().add(CAMDIR.clone().multiplyScalar(d)).setY(h));
   pts.push(END_POS.clone()); return pts; })();
 const appCurve = new THREE.CatmullRomCurve3(APP_PTS, false, 'centripetal');
 const appLen = appCurve.getLength();
-const LOOK_AHEAD = 240; // metres of flight path the camera looks ahead along (only matters for the first moments)
-const FOCUS = V3(-400, 15, -290); // the locus the arc sweeps round: the camera goes wide but keeps looking in at it, then the aim drifts onto the orb
+const LOOK_AHEAD = 700; // metres of flight path the camera looks ahead along (only matters for the first moments)
+const FOCUS = V3(-800, 15, -300); // the locus the arc sweeps round: the camera goes wide but keeps looking in at it, then the aim drifts onto the orb
 // flight timing from a velocity profile: ease up over appRamp[0] s, cruise, then a long ease down to a stop over appRamp[1] s before approachEnd
 const APP_TAB = (() => { const n = Math.max(1, Math.round(T.approachEnd * 200)), tab = new Float64Array(n + 1); const [r0, r1] = T.appRamp || [4, 6]; let acc = 0;
-  for (let i = 1; i <= n; i++) { const t = i / 200; acc += smoother(0, r0, t) * (1 - smoother(T.approachEnd - r1, T.approachEnd, t)); tab[i] = acc; }
+  for (let i = 1; i <= n; i++) { const t = i / 200; acc += ((T.appV0 || 0) + (1 - (T.appV0 || 0)) * smoother(0, r0, t)) * (1 - smoother(T.approachEnd - r1, T.approachEnd, t)); tab[i] = acc; }
   for (let i = 0; i <= n; i++) tab[i] /= acc; return tab; })();
 function appU(t) { const n = APP_TAB.length - 1, x = clamp(t / T.approachEnd) * n, i = Math.min(Math.floor(x), n - 1); return lerp(APP_TAB[i], APP_TAB[i + 1], x - i); }
-function approachShot(t) {
+function approachRaw(t) {
+  t = Math.min(t, T.approachEnd);
   const u = appU(t);
   const pos = appCurve.getPointAt(u);
   const uu = u + LOOK_AHEAD / appLen;
   const ahead = uu <= 1 ? appCurve.getPointAt(uu) : END_POS.clone().add(appCurve.getTangentAt(1).multiplyScalar((uu - 1) * appLen));
   ahead.y -= 10;
   const focus = FOCUS.clone().lerp(ORB_AIM, smoother(T.approachEnd - 9.5, T.approachEnd, t));
-  const tgt = ahead.lerp(focus, smoother(0.0, 7.5, t));
+  const tgt = ahead.lerp(focus, smoother(2.0, 11.0, t));
+  tgt.lerp(V3(NOB.x, NOB.y + 14, NOB.z), 1 - smoother(0.0, 3.4, t)); // open on the lighthouse, then let it slide past
   return { pos, tgt, fov: 40 };
+}
+// the look target is averaged over a short window of time (gaussian), which irons out any bend in the path so the view never snaps
+function approachShot(t) {
+  const raw = approachRaw(t), tgt = new THREE.Vector3(); let wsum = 0;
+  for (let k = -7; k <= 7; k++) { const w = Math.exp(-(k * k) / 18); tgt.addScaledVector(approachRaw(Math.max(0, t + k * 0.33)).tgt, w); wsum += w; }
+  raw.tgt = tgt.multiplyScalar(1 / wsum); return raw;
 }
 // ---- shot 2: a single continuous rise from the beach to orbit height. Height comes from the `alt` keys; the tilt, the swing round
 // from the north-east to the south and the drift of the aim point from the orb to the city centre are all driven by that height.
-const PHI_KEYS = [[Math.log(ALT0), Math.atan(END_D / ALT0) / D2R], [Math.log(8), 77], [Math.log(30), 67], [Math.log(120), 54], [Math.log(600), 36], [Math.log(4000), 12], [Math.log(40000), 8]];
+const PHI_KEYS = [[Math.log(ALT0), Math.atan(END_D / ALT0) / D2R], [Math.log(3.2), 78], [Math.log(10), 72], [Math.log(30), 63], [Math.log(120), 52], [Math.log(600), 36], [Math.log(4000), 12], [Math.log(40000), 8]];
 const AZ0 = Math.atan2(CAMDIR.z, CAMDIR.x), AZ1 = Math.PI / 2; // swings east over the sea, then round to the south (north-up, as the globe expects)
 function riseShot(t) {
   const V = altAt(t), lv = Math.log(V);
   const D = V * Math.tan(track(PHI_KEYS, lv) * D2R);
   const aimFar = V3(-700, 0, -150).lerp(CITY_CENTRE, smoother(Math.log(3000), Math.log(25000), lv));
-  const tgt = ORB_AIM.clone().lerp(aimFar, smoother(Math.log(12), Math.log(6000), lv));
-  const azK = smoother(Math.log(10), Math.log(6000), lv), az = lerp(AZ0, AZ1, azK);
+  const tgt = ORB_AIM.clone().lerp(aimFar, smoother(Math.log(6), Math.log(6000), lv));
+  const azK = smoother(Math.log(2.5), Math.log(5000), lv), az = lerp(AZ0, AZ1, azK);
   return { pos: tgt.clone().add(V3(Math.cos(az) * D, V, Math.sin(az) * D)), tgt, fov: lerp(40, 44, azK) };
 }
 const cityShot = t => window.__camOverride || (t < T.approachEnd ? approachShot(t) : riseShot(t));
@@ -1059,13 +1059,20 @@ composer.setPixelRatio(1); composer.setSize(W, H);
 const dual = new DualScenePass(); composer.addPass(dual);
 const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 0.5, 0.35, 0.3); composer.addPass(bloom);
 const grade = new ShaderPass({
-  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uFlash: { value: 0 } },
+  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uFlash: { value: 0 }, uTau: { value: -1 }, uCamPos: { value: new THREE.Vector3() }, uCamR: { value: new THREE.Vector3() }, uCamU: { value: new THREE.Vector3() }, uCamF: { value: new THREE.Vector3() }, uTan: { value: new THREE.Vector2() }, uOrbG: { value: new THREE.Vector3() }, uShockC: { value: new THREE.Vector2(0.5, 0.5) } },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
-  fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime; uniform float uFlash; varying vec2 vUv;
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime; uniform float uFlash; uniform float uTau; uniform vec3 uCamPos, uCamR, uCamU, uCamF, uOrbG; uniform vec2 uTan, uShockC; varying vec2 vUv;
   float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233)))*43758.5453); }
   void main(){ vec2 c = vUv - 0.5; float r2 = dot(c,c); vec2 off = c * r2 * 0.012;
-    vec3 col = vec3(texture2D(tDiffuse, vUv + off).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - off).b);
+    vec2 sw = vec2(0.0); float press = 0.0;
+    if (uTau > 0.0) { // the impact as a pressure wave: two ground-plane rings that bend the picture, compressing then stretching it
+      vec3 ray = normalize(uCamF + uCamR*((vUv.x*2.0 - 1.0)*uTan.x) + uCamU*((vUv.y*2.0 - 1.0)*uTan.y)); float tt = (uOrbG.y - uCamPos.y)/ray.y;
+      if (tt > 0.0) { vec3 wp = uCamPos + ray*tt; float r = length(wp.xz - uOrbG.xz); float amp = 0.0;
+        for (int i = 0; i < 2; i++) { float tr = uTau - 0.42*float(i); if (tr > 0.0) { float R = 460.0*(1.0 - exp(-tr/1.0)); float w = 12.0 + 0.07*R; float x = (r - R)/w; amp += exp(-x*x) * sin(x*3.4) * exp(-tr/1.4) / (1.0 + 0.6*float(i)); } }
+        sw = normalize(vUv - uShockC + vec2(1e-5)) * amp * 0.042; press = amp; } }
+    vec3 col = vec3(texture2D(tDiffuse, vUv + off + sw*1.18).r, texture2D(tDiffuse, vUv + sw).g, texture2D(tDiffuse, vUv - off + sw*0.84).b);
     col = pow(max(col, vec3(0.0)), vec3(0.95)); // lift the shadows a touch
+    col *= 1.0 + press * 0.3;
     col *= 1.0 - smoothstep(0.08, 0.62, r2) * 0.7;
     col += vec3(1.0,0.25,0.3) * uFlash;
     col += (h(vUv*vec2(1733.,977.) + fract(uTime*7.13)) - 0.5) * 0.012;
@@ -1135,7 +1142,7 @@ function frame(t) {
   for (const s of STREAMS) { const p = (t - s.t0) / s.dur; s.mesh.visible = p > 0 && p < 1.45; const u = s.mesh.material.uniforms; u.uHead.value = p; u.uShift.value.copy(shift); u.uAlpha.value = smooth(0, 0.15, p) * (1 - smooth(1.2, 1.45, p)); }
   moteMat.uniforms.uA.value = smooth(T.gather0, T.gather0 + 0.9, t) * (1 - smooth(T.gatherFull + 0.2, T.gatherFull + 1.2, t));
   moteMat.uniforms.uOrbY.value = oy;
-  groundGlowMat.uniforms.uA.value = smooth(T.gather0, T.gather0 + 2.0, t) * (afterImpact > 0 ? Math.exp(-afterImpact / 0.6) : 1) * (0.75 + 0.25 * formed) + (afterImpact > 0 ? 2.2 * Math.exp(-afterImpact / 0.25) : 0);
+  groundGlowMat.uniforms.uA.value = smooth(T.gather0, T.gather0 + 2.0, t) * (afterImpact > 0 ? Math.exp(-afterImpact / 0.2) : 1) * (0.75 + 0.25 * formed) + (afterImpact > 0 ? 0.8 * Math.exp(-afterImpact / 0.15) : 0);
   column.scale.set(0.8 + 0.6 * formed, Math.max(oy * 1.05, 0.01), 1);
   column.material.opacity = 0.42 * formed * (t < T.impact ? 1 : Math.exp(-afterImpact / 0.2));
   const gr = t - T.gatherFull;
@@ -1149,10 +1156,14 @@ function frame(t) {
     ts[i] = (3.2 * (1 - i / NT) + 0.5) * sz;
   }
   tGeo.attributes.position.needsUpdate = true; tGeo.attributes.aA.needsUpdate = true; tGeo.attributes.aS.needsUpdate = true;
-  shockMat.uniforms.uTau.value = (t > T.impact && t < T.impact + 6) ? t - T.impact : -1;
+  { const g = grade.uniforms; cityCam.updateMatrixWorld(true); const e = cityCam.matrixWorld.elements;
+    g.uCamPos.value.copy(cityCam.position); g.uCamR.value.set(e[0], e[1], e[2]); g.uCamU.value.set(e[4], e[5], e[6]); g.uCamF.value.set(-e[8], -e[9], -e[10]);
+    const ty = Math.tan(cityCam.fov * D2R / 2); g.uTan.value.set(ty * cityCam.aspect, ty); g.uOrbG.value.copy(ORB);
+    const sc = ORB.clone().project(cityCam); g.uShockC.value.set(sc.x * 0.5 + 0.5, sc.y * 0.5 + 0.5);
+    g.uTau.value = (t > T.impact && t < T.xfade[0] && t < T.impact + 5) ? t - T.impact : -1; }
   U.uFront.value = cityFront(t);
   const tau = t - T.impact;
-  if (tau > 0) { const rr = 3 + 320 * (1 - Math.exp(-tau / 0.8)); ring.scale.setScalar(rr); ringMat.opacity = Math.exp(-tau / 0.6); pillar.scale.set(2 + tau * 5, 26 * Math.exp(-tau / 0.3), 1); pillar.material.opacity = 0.6 * Math.exp(-tau / 0.25); }
+  if (tau > 0) { const rr = 3 + 320 * (1 - Math.exp(-tau / 0.8)); ring.scale.setScalar(rr); ringMat.opacity = 0.35 * Math.exp(-tau / 0.5); pillar.scale.set(2 + tau * 5, 26 * Math.exp(-tau / 0.3), 1); pillar.material.opacity = 0.6 * Math.exp(-tau / 0.25); }
   else { ringMat.opacity = 0; pillar.material.opacity = 0; }
   beam.rotation.y = 1.4 + t * 0.85;
   if (window.__flag) { const p = window.__flag.geometry.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i) + 2; p.setZ(i, Math.sin(x * 1.6 - t * 6) * 0.25 * (x / 4)); } p.needsUpdate = true; }
