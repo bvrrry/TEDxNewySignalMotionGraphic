@@ -385,12 +385,13 @@ let maxDist = 0; for (const d of dist) if (isFinite(d)) maxDist = Math.max(maxDi
 
 // roads: ribbons on the terrain, dark until the signal front reaches them
 const roadMat = new THREE.ShaderMaterial({
-  uniforms: { ...U }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  uniforms: { ...U, uLinePx: { value: 0 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   vertexShader: GLSL_COMMON + `
-  uniform float uWidthScale; attribute vec2 aDir; attribute float aSide; attribute float aD; attribute float aW;
+  uniform float uWidthScale; uniform float uLinePx; attribute vec2 aDir; attribute float aSide; attribute float aD; attribute float aW;
   varying float vD; varying float vSide; varying vec3 vW;
   void main(){ vec3 p = position; vec2 perp = vec2(-aDir.y, aDir.x);
-    p.xz += perp * aSide * aW * uWidthScale * 0.5;
+    float wLine = max(aW * uWidthScale, length(position - uCamPos) * uLinePx); // never thinner than the same few pixels on screen, whatever the class or the height
+    p.xz += perp * aSide * wLine * 0.5;
     vec4 wp = modelMatrix*vec4(p,1.); vW = wp.xyz; vD = aD; vSide = aSide; gl_Position = projectionMatrix*viewMatrix*wp; }`,
   fragmentShader: GLSL_COMMON + `varying float vD; varying float vSide; varying vec3 vW;
   void main(){
@@ -452,7 +453,8 @@ const nodeMat = new THREE.ShaderMaterial({
   uniforms: { ...U, uPx: { value: H / 1080 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   vertexShader: GLSL_COMMON + `uniform float uPx; attribute float aD; varying float vA;
   void main(){ vec4 mv = modelViewMatrix*vec4(position,1.); float x = uFront - aD;
-    vA = step(0.0,x) * (0.2 + 2.2*exp(-max(x,0.0)/60.0));
+    float hf = 1.0 - smoothstep(500.0, 2500.0, -mv.z);
+    vA = step(0.0,x) * (0.2 + 2.2*exp(-max(x,0.0)/60.0)) * hf;
     gl_PointSize = clamp(uPx * 8.0 * (300.0 / -mv.z) * (1.0 + 2.0*exp(-max(x,0.0)/40.0)), 0.0, uPx*26.0);
     gl_Position = projectionMatrix*mv; }`,
   fragmentShader: `varying float vA; void main(){ float r = length(gl_PointCoord-0.5); float a = smoothstep(0.5,0.0,r); a *= a; gl_FragColor = vec4(vec3(1.0,0.2,0.25)*a*vA, 1.0); }`
@@ -1013,7 +1015,7 @@ function approachShot(t) {
 // from the north-east to the south and the drift of the aim point from the orb to the city centre are all driven by that height.
 const PHI_KEYS = [[Math.log(ALT0), Math.atan(END_D / ALT0) / D2R], [Math.log(6), 82], [Math.log(30), 76], [Math.log(120), 67], [Math.log(400), 53], [Math.log(1500), 36], [Math.log(6000), 14], [Math.log(40000), 8]];
 const AZ0 = Math.atan2(CAMDIR.z, CAMDIR.x), AZ1 = Math.PI / 2; // swings east over the sea, then round to the south (north-up, as the globe expects)
-function riseShot(t) {
+function riseRaw(t) {
   const V = altAt(t), lv = Math.log(V);
   // one shared progress value (log of the height climbed) drives the tilt, the swing round and the drift of the aim together, so the zoom and the rotation are a single move
   const P = clamp((lv - Math.log(2.2)) / (Math.log(14000) - Math.log(2.2)));
@@ -1024,6 +1026,13 @@ function riseShot(t) {
   const tgt = ORB_AIM.clone().lerp(aimFar, e);
   const az = lerp(AZ0, AZ1, e);
   return { pos: tgt.clone().add(V3(Math.cos(az) * D, V, Math.sin(az) * D)), tgt, fov: lerp(40, 44, e) };
+}
+function riseShot(t) {
+  const raw = riseRaw(t), k = 1 - smooth(T.impact + 2.5, T.impact + 4.5, t);   // smoothing matters only around the drop
+  if (k <= 0) return raw;
+  const pos = new THREE.Vector3(), tgt = new THREE.Vector3(); let fov = 0, ws = 0;
+  for (let i = -7; i <= 7; i++) { const w = Math.exp(-(i * i) / 24), r = riseRaw(t + i * 0.06); pos.addScaledVector(r.pos, w); tgt.addScaledVector(r.tgt, w); fov += r.fov * w; ws += w; }
+  return { pos: raw.pos.clone().lerp(pos.multiplyScalar(1 / ws), k), tgt: raw.tgt.clone().lerp(tgt.multiplyScalar(1 / ws), k), fov: lerp(raw.fov, fov / ws, k) };
 }
 const cityShot = t => window.__camOverride || (t < T.approachEnd ? approachShot(t) : riseShot(t));
 function globeShot(t) {
@@ -1126,7 +1135,8 @@ function frame(t) {
   cityCam.near = Math.max(0.08, camH * 0.02); cityCam.far = Math.max(9000, camH * 12); cityCam.updateProjectionMatrix();
   U.uCamPos.value.copy(cityCam.position);
   U.uFogDensity.value = 1 / Math.max(1500, camH * 9);
-  U.uWidthScale.value = Math.max(1, camH / 2200);
+  U.uWidthScale.value = 1;
+  roadMat.uniforms.uLinePx.value = 2 * Math.tan(cityCam.fov * D2R / 2) / H * 2.6 * (H / 1080);   // world metres per metre of distance for ~2.6 px (at 1080p) of line
   sky.position.copy(cityCam.position); sky.scale.setScalar(cityCam.far * 0.8 / 1000);
   // ---------------- orb
   const op = orbPos(t), oy = orbHeight(t);

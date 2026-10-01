@@ -16,8 +16,8 @@ An animated opener for TEDxNewy 2026, built as a real-time Three.js scene of New
 
 | cut | length | use | status |
 |---|---|---|---|
-| `long` | 46.1 s | the event opener, played before the show | near final: awaiting sign-off, then 4K render and final audio mix |
-| `short` | 8.6 s | a sting before each speaker walks on | **parked**: it runs but has not been retimed for the current scene; a bird's-eye signal spreading out through Newcastle, then the same world view and "i" outro |
+| `long` | 46.1 s | the event opener, played before the show | near final: awaiting sign-off, then 4K render |
+| `short` | 10.5 s | a sting before each speaker walks on | built: the long cut from the crossfade onwards, compressed. It fades in from black on the lit city sprawl, punches out to the globe, spreads across the country and the world, brings the orb home to the "i", holds the title, then fades to black. Own audio (take B, short version) |
 
 Final format: 3840 x 2160, 30 fps, H.264 with AAC audio.
 
@@ -80,12 +80,14 @@ Chrome is found automatically on Windows, else set `$CHROME`. Add `--gpu 1` to u
 ## Preview
 
 - **Live scrub preview:** double-click `start_preview.bat`. Drag the slider or jump to a beat; it renders any moment on demand.
-- **Draft video** (about 3 minutes on a normal GPU):
+- **Previews** (about 4 minutes for the long cut, 1 minute for the short, on a normal GPU). The two current previews are `previews/preview long.mp4` and `previews/preview short.mp4`:
 
 ```bash
-node render.js --cut long --w 1280 --h 720 --gpu 1 --msaa 2 --preset veryfast --crf 22 --out previews/long_draft_silent.mp4
-python audio.py long
-ffmpeg -i previews/long_draft_silent.mp4 -i signal_audio_long.wav -c:v libx264 -crf 25 -c:a aac -b:a 192k -shortest previews/Signal_long_draft.mp4
+node render.js --cut long  --w 1280 --h 720 --gpu 1 --msaa 2 --preset veryfast --crf 22 --out previews/silent_long.mp4
+node render.js --cut short --w 1280 --h 720 --gpu 1 --msaa 2 --preset veryfast --crf 22 --out previews/silent_short.mp4
+python audio_b.py long ; python audio_b.py short
+ffmpeg -i previews/silent_long.mp4  -i signal_audio_long_b.wav  -c:v libx264 -crf 25 -c:a aac -b:a 192k -shortest "previews/preview long.mp4"
+ffmpeg -i previews/silent_short.mp4 -i signal_audio_short_b.wav -c:v libx264 -crf 25 -c:a aac -b:a 192k -shortest "previews/preview short.mp4"
 ```
 
 - **Stills** for quick checks: `node render.js --cut long --w 960 --h 540 --gpu 1 --stills 1,9,15,21,27,35 --outdir stills`
@@ -104,7 +106,7 @@ Long renders can be split with `--start` / `--end` and joined with ffmpeg.
 
 1. Sign off the long cut (picture, then audio).
 2. Render the long cut at 4K and mux the audio.
-3. Retime the short cut: bird's-eye view of the signal spreading through Newcastle, then the same world view and "i" outro.
+3. Sign off the short cut, then render it at 4K too (same command with `--cut short`).
 
 ## Credits
 

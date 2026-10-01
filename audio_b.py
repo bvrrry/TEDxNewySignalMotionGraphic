@@ -163,14 +163,17 @@ choir([60, 65, 69, 72, 77], tG, dim1 + 0.4, 1.8, 1.2, 0.040)
 strings(Amaj, land - 0.04, fo[1] - 0.2, 0.2, 1.6, 0.090, cut=3600, spread=0.9)   # A major: the lift
 choir([57, 61, 64, 69, 73], land, fo[1] - 0.4, 0.5, 1.5, 0.048)
 
+if SHORT:   # the short cut opens with its own swell and a low drum as it fades in from black
+    strings(Am9, -0.1, 1.6, 0.5, 0.7, 0.075, cut=1700); taiko(0.1, 0.5, 50.0, 0.7)
+
 # ---------------------------------------------------------------- felt-piano arpeggio carries the piece
 pat = [0, 2, 3, 4, 3, 2, 4, 3]          # eighth-note pattern over the chord tones, low to high
 step = BEAT / 2
-tk = max(2.0, 0.0); k = 0
+tk = 0.3 if SHORT else 2.0; k = 0
 while tk < min(land + 4.5, DUR - 0.8):
     ch = chord_at(tk)
     n = ch[pat[k % len(pat)] % len(ch)] + (12 if (k % 16) in (3, 11) else 0)
-    lvl = 0.018 + 0.040 * sr_(2.0, gf, tk) + 0.010 * sr_(impact, xf0, tk)
+    lvl = 0.052 if SHORT else (0.018 + 0.040 * sr_(2.0, gf, tk) + 0.010 * sr_(impact, xf0, tk))
     if tk > dim0 - 0.2 and tk < land - 0.1: lvl *= 0.6
     if tk >= land: lvl = 0.040 * (1 - sr_(bg[0], fo[1], tk))
     if tk < bg[1] + 1.2 or tk >= land:
