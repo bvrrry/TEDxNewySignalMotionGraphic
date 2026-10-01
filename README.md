@@ -23,7 +23,7 @@ Final format: 3840 x 2160, 30 fps, H.264 with AAC audio.
 
 ## The long cut, beat by beat
 
-1. **0 to 20 s, the glide.** Fades in from black with the camera already moving, straight toward Nobbys lighthouse (the tower and its sweeping beam are the opening image), then past it, round Fort Scratchley, bowing out around the Ocean Baths headland, and a straight run in over the bay to Newcastle Beach. The camera goes wide but keeps looking in at the centre of the arc (the east end of the city), then the aim drifts onto the orb as it eases to a stop.
+1. **0 to 20 s, the glide.** Fades in from black with the camera already moving, straight toward Nobbys lighthouse (the tower and its sweeping beam are the opening image), then past it, round Fort Scratchley, bowing out around the Ocean Baths headland, and a straight run in over the bay to Newcastle Beach. The whole route is smoothed (resampled and averaged) and the look target follows one simple law: lighthouse, then the centre of the arc (the east end of the city), then it settles on the orb about 3 s before the camera stops, so there is nothing to correct at the end and the look direction never turns faster than about 8 degrees per second.
 2. **14 to 22 s, the orb is born.** A glow and fine rings in the sand draw in light filaments and motes that spiral up into an orb. It floats up, then drops back into the ground.
 3. **22.7 to 30 s, the signal spreads.** As the orb enters the ground a short camera shake and one or two pressure waves distort the picture like a sound wave (screen-space ripple in the grade pass), while the zoom-out kicks in and the camera tilt, swing and aim begin together with it, all driven by height so they are simultaneous and smooth. Streets, then buildings, light outward while the camera keeps rising to a top-down view of the city.
 4. **30.3 to 31 s, city to globe.** A fast zoom-blur punch with a little shake hides the change from detailed map to the satellite view.
@@ -49,7 +49,7 @@ All timings are in `timelines.json` (per cut); `main.js` reads them, so re-timin
 
 - `approachEnd`, `appRamp`: the glide and its speed profile (ease up, cruise, long ease down). The path is `APP_PTS` in `main.js`.
 - `gather0`, `gatherFull`, `hover0`, `launch`, `impact`: the orb forms, rises and drops.
-- `front`, `zoom0`, `alt`: how fast the street lighting spreads, and the single continuous rise (`alt` is camera height in metres; tilt, swing and aim all follow height).
+- `alt`, `frontK`, `zoom0`: the single continuous rise (`alt` is camera height in metres; tilt, swing and aim all follow height; the zoom launches the instant of the impact), and the street lighting, which is `frontK` times how far the camera has risen, so it accelerates exactly as smoothly as the zoom (`zoom0` is only used by the audio).
 - `xfade`, `web0`, `worldKm`: city to globe, when the web starts, and how far it must spread before world arcs may start.
 - `globeLat` / `globeLon`: where the globe camera looks over time.
 - `dim`, `ret0`, `land`, `logo`: globe dims, orb returns, lands as the i-dot, logo fades in.

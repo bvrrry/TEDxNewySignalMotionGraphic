@@ -929,8 +929,8 @@ const webMat = new THREE.ShaderMaterial({
 const ALT_KEYS = T.alt.map(([t, a]) => [t, Math.log(a)]);
 function altAt(t) { return Math.exp(track(ALT_KEYS, t)); }
 const webFront = t => t < T.web0 ? -1 : 0.55 * altAt(t) / 1000;
-// street front: metres from the orb along the streets. front = a*dt + b*dt^p, locked to what the camera can see once the zoom-out is under way
-const cityFront = t => { const dt = t - T.impact; if (dt <= 0) return -1e9; const [a, b, p] = T.front; return Math.max(a * dt + b * Math.pow(dt, p), t > T.zoom0 ? 0.55 * altAt(t) : 0) - IMPACT_OFF; };
+// street front: metres from the orb along the streets. It is a fixed fraction of how far the camera has risen since the impact, so it accelerates exactly as smoothly as the zoom does (no ramps, no jumps)
+const cityFront = t => { if (t <= T.impact) return -1e9; return Math.max(0, (T.frontK || 0.6) * (altAt(t) - altAt(T.impact))) - IMPACT_OFF; };
 const arrival = {};
 for (const c of AUS_CITIES) { let best = 0, bd = Infinity; web.pts.forEach((p, i) => { const d = gcKm(p, CITIES[c]); if (d < bd) { bd = d; best = i; } }); const need = web.d[best] + bd; let t = T.web0; while (t < DURATION && webFront(t) < need) t += 0.01; arrival[c] = t; }
 arrival.newcastle = T.xfade[0];
@@ -980,43 +980,44 @@ const APP_PTS = (() => { // moving in from the sea toward Nobbys lighthouse and 
     pts.push(V3(P2.x + cx * u + px * b, 28 + (48 - 28) * (1 - smoother(0.3, 1, u)), P2.z + cz * u + pz * b)); }
   for (const [d, h] of [[220, 16], [130, 10], [70, 7.5], [30, 6]]) pts.push(END_POS.clone().add(CAMDIR.clone().multiplyScalar(d)).setY(h));
   pts.push(END_POS.clone()); return pts; })();
-const appCurve = new THREE.CatmullRomCurve3(APP_PTS, false, 'centripetal');
+const appCurve0 = new THREE.CatmullRomCurve3(APP_PTS, false, 'centripetal');
+// the whole route is resampled evenly and averaged over about 140 m so it never twists; the first and last stretches stay exactly as designed
+const appCurve = (() => {
+  const n = Math.round(appCurve0.getLength() / 10), P = []; for (let i = 0; i <= n; i++) P.push(appCurve0.getPointAt(i / n));
+  const S = P.map((p, i) => { let w = 0; const a = new THREE.Vector3();
+    for (let k = -30; k <= 30; k++) { const g = Math.exp(-(k * k) / (2 * 14 * 14)); a.addScaledVector(P[clamp(i + k, 0, n)], g); w += g; }
+    a.multiplyScalar(1 / w); const u = i / n; return a.lerp(p, smoother(0.8, 0.95, u)).lerp(p, 1 - smoother(0.0, 0.04, u)); });
+  return new THREE.CatmullRomCurve3(S.filter((_, i) => i % 3 === 0 || i === n), false, 'centripetal'); })();
 const appLen = appCurve.getLength();
-const LOOK_AHEAD = 700; // metres of flight path the camera looks ahead along (only matters for the first moments)
-const FOCUS = V3(-800, 15, -300); // the locus the arc sweeps round: the camera goes wide but keeps looking in at it, then the aim drifts onto the orb
-// flight timing from a velocity profile: ease up over appRamp[0] s, cruise, then a long ease down to a stop over appRamp[1] s before approachEnd
+const FOCUS = V3(-800, 15, -300); // the locus the arc sweeps round: the camera goes wide but keeps looking in at it
+const NOB_TOP = V3(NOB.x, NOB.y + 14, NOB.z);
+// flight timing from a velocity profile: already moving at the fade-in (appV0), ease to cruise over appRamp[0] s, long ease down to a stop over appRamp[1] s before approachEnd
 const APP_TAB = (() => { const n = Math.max(1, Math.round(T.approachEnd * 200)), tab = new Float64Array(n + 1); const [r0, r1] = T.appRamp || [4, 6]; let acc = 0;
   for (let i = 1; i <= n; i++) { const t = i / 200; acc += ((T.appV0 || 0) + (1 - (T.appV0 || 0)) * smoother(0, r0, t)) * (1 - smoother(T.approachEnd - r1, T.approachEnd, t)); tab[i] = acc; }
   for (let i = 0; i <= n; i++) tab[i] /= acc; return tab; })();
 function appU(t) { const n = APP_TAB.length - 1, x = clamp(t / T.approachEnd) * n, i = Math.min(Math.floor(x), n - 1); return lerp(APP_TAB[i], APP_TAB[i + 1], x - i); }
 function approachRaw(t) {
   t = Math.min(t, T.approachEnd);
-  const u = appU(t);
-  const pos = appCurve.getPointAt(u);
-  const uu = u + LOOK_AHEAD / appLen;
-  const ahead = uu <= 1 ? appCurve.getPointAt(uu) : END_POS.clone().add(appCurve.getTangentAt(1).multiplyScalar((uu - 1) * appLen));
-  ahead.y -= 10;
-  const focus = FOCUS.clone().lerp(ORB_AIM, smoother(T.approachEnd - 9.5, T.approachEnd, t));
-  const tgt = ahead.lerp(focus, smoother(2.0, 11.0, t));
-  tgt.lerp(V3(NOB.x, NOB.y + 14, NOB.z), 1 - smoother(0.0, 3.4, t)); // open on the lighthouse, then let it slide past
-  return { pos, tgt, fov: 40 };
+  const focus = FOCUS.clone().lerp(ORB_AIM, smoother(T.approachEnd - 14, T.approachEnd - 3, t));   // the centre of the arc slides onto the orb well before the end
+  const tgt = NOB_TOP.clone().lerp(focus, smoother(0.6, 6.0, t));                                    // open on the lighthouse, then look in
+  return { pos: appCurve.getPointAt(appU(t)), tgt, fov: 40 };
 }
-// the look target is averaged over a short window of time (gaussian), which irons out any bend in the path so the view never snaps
+// the look target is also averaged over a couple of seconds (gaussian), so the view glides rather than snaps
 function approachShot(t) {
   const raw = approachRaw(t), tgt = new THREE.Vector3(); let wsum = 0;
-  for (let k = -7; k <= 7; k++) { const w = Math.exp(-(k * k) / 18); tgt.addScaledVector(approachRaw(Math.max(0, t + k * 0.33)).tgt, w); wsum += w; }
-  raw.tgt = tgt.multiplyScalar(1 / wsum); return raw;
+  for (let k = -8; k <= 8; k++) { const w = Math.exp(-(k * k) / 30); tgt.addScaledVector(approachRaw(Math.max(0, t + k * 0.3)).tgt, w); wsum += w; }
+  raw.tgt = tgt.multiplyScalar(1 / wsum).lerp(ORB_AIM, smoother(T.approachEnd - 3, T.approachEnd - 0.6, t)); return raw;
 }
 // ---- shot 2: a single continuous rise from the beach to orbit height. Height comes from the `alt` keys; the tilt, the swing round
 // from the north-east to the south and the drift of the aim point from the orb to the city centre are all driven by that height.
-const PHI_KEYS = [[Math.log(ALT0), Math.atan(END_D / ALT0) / D2R], [Math.log(3.2), 78], [Math.log(10), 72], [Math.log(30), 63], [Math.log(120), 52], [Math.log(600), 36], [Math.log(4000), 12], [Math.log(40000), 8]];
+const PHI_KEYS = [[Math.log(ALT0), Math.atan(END_D / ALT0) / D2R], [Math.log(6), 82], [Math.log(30), 76], [Math.log(120), 67], [Math.log(400), 53], [Math.log(1500), 36], [Math.log(6000), 14], [Math.log(40000), 8]];
 const AZ0 = Math.atan2(CAMDIR.z, CAMDIR.x), AZ1 = Math.PI / 2; // swings east over the sea, then round to the south (north-up, as the globe expects)
 function riseShot(t) {
   const V = altAt(t), lv = Math.log(V);
   const D = V * Math.tan(track(PHI_KEYS, lv) * D2R);
   const aimFar = V3(-700, 0, -150).lerp(CITY_CENTRE, smoother(Math.log(3000), Math.log(25000), lv));
-  const tgt = ORB_AIM.clone().lerp(aimFar, smoother(Math.log(6), Math.log(6000), lv));
-  const azK = smoother(Math.log(2.5), Math.log(5000), lv), az = lerp(AZ0, AZ1, azK);
+  const tgt = ORB_AIM.clone().lerp(aimFar, smoother(Math.log(25), Math.log(6000), lv));
+  const azK = smoother(Math.log(25), Math.log(6000), lv), az = lerp(AZ0, AZ1, azK);
   return { pos: tgt.clone().add(V3(Math.cos(az) * D, V, Math.sin(az) * D)), tgt, fov: lerp(40, 44, azK) };
 }
 const cityShot = t => window.__camOverride || (t < T.approachEnd ? approachShot(t) : riseShot(t));
