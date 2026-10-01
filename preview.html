@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Signal opener preview</title>
+<style>
+  html, body { margin: 0; background: #0b0b0d; color: #ddd; font: 14px/1.4 system-ui, Arial, sans-serif; }
+  #wrap { max-width: 1280px; margin: 0 auto; padding: 12px 16px 24px; }
+  #viewport { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; overflow: hidden; border-radius: 6px; }
+  #frame { position: absolute; left: 0; top: 0; width: 1280px; height: 720px; border: 0; transform-origin: 0 0; }
+  #bar { display: flex; gap: 12px; align-items: center; margin-top: 10px; }
+  #bar input[type=range] { flex: 1; accent-color: #EB0028; }
+  button, select { background: #1c1c20; color: #eee; border: 1px solid #333; border-radius: 4px; padding: 6px 12px; font: inherit; cursor: pointer; }
+  button:hover { border-color: #EB0028; }
+  #time { font-variant-numeric: tabular-nums; min-width: 9em; text-align: right; }
+  #beats { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  #beats button { font-size: 12px; padding: 4px 9px; }
+  #status { margin-top: 8px; color: #888; font-size: 12px; }
+  h1 { font-size: 15px; font-weight: 600; margin: 0 0 10px; }
+  a { color: #ff5a70; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1>TEDxNewy "Signal" opener: live preview</h1>
+  <div id="viewport"><iframe id="frame"></iframe></div>
+  <div id="bar">
+    <button id="play">Play</button>
+    <input id="scrub" type="range" min="0" max="10" step="0.02" value="0">
+    <span id="time">0.00 / 0.00 s</span>
+    <select id="cut"><option value="long">Long cut</option><option value="short">Short cut</option></select>
+  </div>
+  <div id="beats"></div>
+  <div id="status">Loading the scene...</div>
+  <p style="color:#888;font-size:12px">Space plays or pauses, left and right arrows step 0.1 s (hold Shift for 1 s). Live playback runs slower than real time on most machines; the draft MP4s in <code>previews/</code> are the real-time version.</p>
+</div>
+<script>
+const frame = document.getElementById('frame'), scrub = document.getElementById('scrub'), timeEl = document.getElementById('time'), statusEl = document.getElementById('status'), playBtn = document.getElementById('play'), cutSel = document.getElementById('cut'), beatsEl = document.getElementById('beats');
+let win = null, dur = 0, t = 0, playing = false, last = 0, busy = false, TLx = null;
+const params = new URLSearchParams(location.search);
+cutSel.value = params.get('cut') || 'long';
+function fit() { const s = document.getElementById('viewport').clientWidth / 1280; frame.style.transform = `scale(${s})`; }
+addEventListener('resize', fit);
+async function load() {
+  playing = false; playBtn.textContent = 'Play'; statusEl.textContent = 'Loading the scene...'; win = null; beatsEl.innerHTML = '';
+  frame.src = `index.html?cut=${cutSel.value}&w=1280&h=720&msaa=0`;
+  await new Promise(r => { frame.onload = r; });
+  const w = frame.contentWindow;
+  while (!w.READY) await new Promise(r => setTimeout(r, 200));
+  win = w; dur = w.DURATION; TLx = w.__dbg.TL;
+  scrub.max = dur; t = 0; await show(0);
+  const beats = [['Start', 0], ['Orb starts to form', TLx.gather0], ['Orb complete', TLx.gatherFull], ['Drops / impact', TLx.impact], ['Streets lit, rising', TLx.impact + 2.5], ['City to globe', TLx.xfade[0]], ['Web spreads', TLx.web0 + 2.5],
+    ['Half-X complete', w.EVENTS.tWorld], ['Orb returns', TLx.ret0], ['Title lands', TLx.land], ['Planet fades', TLx.bgOut[0]], ['Fade to black', TLx.fadeOut[0]]];
+  if (TLx.approachEnd) beats.splice(1, 0, ['Past the lighthouse', 3.5], ['Around the fort', 9.5], ['Arrive at the beach', TLx.approachEnd - 1.5]);
+  for (const [name, bt] of beats) { const b = document.createElement('button'); b.textContent = `${name} (${bt.toFixed(1)}s)`; b.onclick = () => seek(bt); beatsEl.appendChild(b); }
+  statusEl.textContent = 'Ready.'; fit();
+}
+async function show(tt) {
+  if (!win || busy) return; busy = true; t = Math.min(Math.max(tt, 0), dur);
+  try { await win.renderFrame(t); } finally { busy = false; }
+  scrub.value = t; timeEl.textContent = `${t.toFixed(2)} / ${dur.toFixed(2)} s`;
+}
+const seek = tt => show(tt);
+scrub.oninput = () => show(+scrub.value);
+cutSel.onchange = load;
+playBtn.onclick = () => { playing = !playing; playBtn.textContent = playing ? 'Pause' : 'Play'; if (playing) { if (t >= dur - 0.05) t = 0; last = performance.now(); loop(); } };
+async function loop() {
+  while (playing) { const now = performance.now(); const dt = (now - last) / 1000; last = now; await show(t + dt); if (t >= dur - 0.02) { playing = false; playBtn.textContent = 'Play'; } await new Promise(r => requestAnimationFrame(r)); }
+}
+addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); playBtn.click(); }
+  else if (e.code === 'ArrowLeft') show(t - (e.shiftKey ? 1 : 0.1)); else if (e.code === 'ArrowRight') show(t + (e.shiftKey ? 1 : 0.1));
+});
+load();
+</script>
+</body>
+</html>

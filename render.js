@@ -10,9 +10,14 @@ const msaa = args.msaa || 4;
 const port = args.port || 8123;
 const cut = args.cut || 'long';
 
+// Chrome: $CHROME, else the usual Windows / Linux install paths. `--gpu 1` uses the real GPU instead of SwiftShader (much faster).
+const chromePaths = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe', '/opt/google/chrome/chrome'];
+const chrome = process.env.CHROME || chromePaths.find(p => fs.existsSync(p));
+const glArgs = args.gpu === '1' ? ['--use-gl=angle', '--use-angle=d3d11', '--ignore-gpu-blocklist', '--enable-gpu-rasterization']
+  : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
 const browser = await puppeteer.launch({
-  headless: 'shell', executablePath: process.env.CHROME || '/opt/google/chrome/chrome',
-  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--no-sandbox', '--disable-dev-shm-usage', `--window-size=${W},${H}`],
+  headless: 'shell', executablePath: chrome,
+  args: [...glArgs, '--no-sandbox', '--disable-dev-shm-usage', `--window-size=${W},${H}`],
   defaultViewport: { width: W, height: H, deviceScaleFactor: 1 },
   protocolTimeout: 0,
 });

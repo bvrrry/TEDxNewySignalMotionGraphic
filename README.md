@@ -5,18 +5,20 @@ One scene, two cuts:
 
 | cut | length | use |
 |---|---|---|
-| `long`  | 29.5 s | event opener: drone over Nobbys → Fort Scratchley → Newcastle Beach, a person forms the orb, it flies through the east-end streets, the network spreads, ultra zoom-out, the web races across Australia, arcs to the world, the orb returns to become the dot of the "i" in **Signal** |
-| `short` | 7 s    | pre-talk sting: same story compressed (orb launch → streets → spread → globe → title) |
+| `long`  | 46.6 s | event opener: slow glide in from the sea past Nobbys lighthouse, round Fort Scratchley and the Ocean Baths to Newcastle Beach; an orb is born in the sand, rises and drops back into the ground; the signal lights the streets while the camera rises in one continuous move; it spreads across Australia as the left half of the TEDx "x"; world arcs; the orb returns to become the dot of the "i" in **Signal**; the planet fades, the text holds, then fades to black |
+| `short` | 8.6 s | pre-talk sting. **Parked**: it runs but has not been retimed for the new scene yet |
 
 ## Story beats and where they live
 
-All timings are in `timelines.json` (per cut). The scene code in `main.js` reads them, so re-timing a beat is a JSON edit.
+All timings are in `timelines.json` (per cut). `main.js` reads them, so re-timing a beat is a JSON edit.
 
-- `droneEnd`, `gather0`, `gatherFull`, `hover0`, `launch`, `impact` — beach and orb.
-- `frontSpeed`, `craneEnd`, `zoom0`, `alt` (camera altitude keys, metres) — the crane-up and ultra zoom-out.
-- `xfade` — crossfade from the city scene to the globe scene; `web0` — the Australia web starts spreading.
-- `globeLat` / `globeLon` — where the globe camera looks over time.
-- `dim`, `ret0`, `land`, `logo` — globe dims, orb returns, lands as the i-dot, logo fades in.
+- `approachEnd`, `appRamp`: the glide in from the sea. Speed follows a velocity profile (ease up over appRamp[0] s, cruise, long ease down over appRamp[1] s). Waypoints are `APP_PTS` in main.js.
+- `gather0`, `gatherFull`, `hover0`, `launch`, `impact`: the orb forms from the sand, rises, drops into the ground.
+- `front`, `zoom0`, `alt`: street front speed and the single continuous rise (`alt` is camera height in metres; tilt, swing and aim all follow height).
+- `xfade`, `web0`, `armKm`, `worldFrac`: city to globe, the half-x web (two arms from Newcastle, through Darwin and Melbourne), and when world arcs may start.
+- `globeLat` / `globeLon`: where the globe camera looks over time.
+- `dim`, `ret0`, `land`, `logo`: globe dims, orb returns, lands as the i-dot, logo fades in.
+- `bgOut`, `fadeOut`: the planet and background fade out leaving the text, then the text fades to black.
 
 ## Files
 
@@ -25,8 +27,14 @@ All timings are in `timelines.json` (per cut). The scene code in `main.js` reads
 - `render.js` — puppeteer driver: renders stills or an MP4 at any resolution; also writes `events_<cut>.json` (city arrival times, arcs) for the audio.
 - `audio.py` — synthesised sound design, timed from `timelines.json` + `events_<cut>.json`.
 - `data/coast.txt`, `data/roads.txt`, `data/buildings.txt` — OpenStreetMap extracts (coastline, harbour, breakwalls, streets, building footprints as oriented boxes) in local metres. Origin −32.9305, 151.7870 (Newcastle Beach); x east, z south.
-- `models/Xbot.glb` — humanoid from the three.js examples (Mixamo character).
 - `logo.png`, `bricolage-grotesque-latin-*.woff2` — brand assets.
+
+## Preview
+
+- **Live scrub preview:** double-click `start_preview.bat` (starts the local server and opens `preview.html`). Drag the slider or jump to a beat; it renders any moment on demand.
+- **Draft video:** `node render.js --cut long --w 1280 --h 720 --gpu 1 --msaa 2 --preset veryfast --crf 20 --out previews/long_draft_silent.mp4` (about 3 min on a normal GPU), then `python audio.py long` and mux with ffmpeg.
+- `--gpu 1` makes render.js use the real GPU instead of SwiftShader (roughly 20x faster).
+- Dev tools: `probe.js` (render from any camera, optionally with the flight path drawn), `asciimap.js` (land/sea map with the path), `speed.js` (flight speed and height profile).
 
 ## Setup
 
@@ -58,4 +66,4 @@ Render cost on a 2-core CPU with SwiftShader: roughly 3 s/frame at 960×540 and 
 
 ## Credits
 
-Map data © OpenStreetMap contributors (ODbL). Coastlines: Natural Earth via world-atlas. Humanoid: three.js examples (Mixamo).
+Map data © OpenStreetMap contributors (ODbL). Coastlines: Natural Earth via world-atlas.

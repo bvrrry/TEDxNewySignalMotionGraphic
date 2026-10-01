@@ -6,7 +6,6 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as topojson from '/node_modules/topojson-client/src/index.js';
 
 // ================================================================ setup
@@ -360,14 +359,12 @@ function dijkstra(src) {
   while (heap.length) { const [d, u] = pop(); if (done[u]) continue; done[u] = 1; for (const [v, L] of nodes[u].adj) if (d + L < dist[v]) { dist[v] = d + L; prev[v] = u; push([dist[v], v]); } }
   return { dist, prev };
 }
-// the orb's route: from the esplanade by the beach into the east-end streets
-const PERSON = V3(-94, 0, -42);
-PERSON.y = groundY(PERSON.x, PERSON.z);
-const IMPACT = nearestNode(-420, -335, realCount);
-const { dist, prev: prevFromImpact } = dijkstra(IMPACT);
-const ENTRY = (() => { let b = -1, bd = 1e18; for (let k = 0; k < realCount; k++) { if (!isFinite(dist[k])) continue; const d = (nodes[k].x + 150) ** 2 + (nodes[k].z + 75) ** 2; if (d < bd) { bd = d; b = k; } } return b; })();
-const route = (() => { const p = []; let u = ENTRY; while (u >= 0) { p.push(u); u = prevFromImpact[u]; } return p; })(); // ENTRY ... IMPACT
-const impactPos = V3(nodes[IMPACT].x, groundY(nodes[IMPACT].x, nodes[IMPACT].z) + 0.5, nodes[IMPACT].z);
+// the orb is born in the sand of Newcastle Beach; the signal then runs out along the nearest street (the esplanade)
+const ORB = V3(-94, 0, -42);
+ORB.y = groundY(ORB.x, ORB.z);
+const IMPACT = nearestNode(ORB.x, ORB.z, realCount);
+const { dist } = dijkstra(IMPACT);
+const IMPACT_OFF = Math.hypot(nodes[IMPACT].x - ORB.x, nodes[IMPACT].z - ORB.z); // beach to first street, so the front starts at the orb
 let maxDist = 0; for (const d of dist) if (isFinite(d)) maxDist = Math.max(maxDist, d);
 
 // roads: ribbons on the terrain, dark until the signal front reaches them
@@ -595,7 +592,7 @@ const FORT = V3(412, 0, -522); FORT.y = terrainH(FORT.x, FORT.z);
   const fl = glowSprite(RED_LIN, 7, 2); fl.position.set(FORT.x - 4, FORT.y + 22.5, FORT.z - 4); city.add(fl);
   const op = new THREE.Mesh(new THREE.BoxGeometry(7, 6, 7), bMat); op.position.set(FORT.x - 1, FORT.y + 3, FORT.z - 30); city.add(op);
   const opw = new THREE.Mesh(new THREE.BoxGeometry(7.2, 0.8, 7.2), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.5, 0.3, 0.15) })); opw.position.set(FORT.x - 1, FORT.y + 4.5, FORT.z - 30); city.add(opw);
-  for (let i = 0; i < 8; i++) { const [x, z] = ring[i]; const s = glowSprite(0xffd8b0, 16, 0.45, TEX_SOFT); s.position.set(FORT.x + x * 1.02, FORT.y + 1.5, FORT.z + z * 1.02); city.add(s); }
+  for (let i = 0; i < 8; i++) { const [x, z] = ring[i]; const s = glowSprite(0xffd8b0, 10, 0.4, TEX_SOFT); s.position.set(FORT.x + x * 1.02, FORT.y + 1.5, FORT.z + z * 1.02); city.add(s); }
 }
 for (const b of BREAKS) city.add(new THREE.Mesh(new THREE.ExtrudeGeometry(new THREE.Shape(b.map(([x, z]) => new THREE.Vector2(x, -z))), { depth: 3, bevelEnabled: false }).rotateX(-Math.PI / 2), darkMat));
 const navA = glowSprite(RED_LIN, 14, 1.8); navA.position.set(1582, 7, -1662); city.add(navA);
@@ -616,7 +613,7 @@ const navB = glowSprite(RED_LIN, 14, 1.8); navB.position.set(1128, 7, -1952); ci
 {
   const c = COAST.COAST;
   for (let i = 0; i + 1 < c.length; i++) { const [x1, z1] = c[i], [x2, z2] = c[i + 1]; if (!BEACHES[0](x1, z1)) continue; const L = Math.hypot(x2 - x1, z2 - z1); const nx = -(z2 - z1) / L, nz = (x2 - x1) / L;
-    for (let s = 0; s < L; s += 26) { const x = x1 + (x2 - x1) * s / L - nx * 58, z = z1 + (z2 - z1) * s / L - nz * 58; if (!isLand(x, z)) continue; const sp = glowSprite(0xff9a50, 5, 0.9); sp.position.set(x, groundY(x, z) + 6, z); city.add(sp); } }
+    for (let s = 0; s < L; s += 26) { const x = x1 + (x2 - x1) * s / L - nx * 58, z = z1 + (z2 - z1) * s / L - nz * 58; if (!isLand(x, z)) continue; const sp = glowSprite(0xff9a50, 3.2, 0.85); sp.position.set(x, groundY(x, z) + 6, z); city.add(sp); } }
 }
 // coal ships waiting offshore
 const shipLights = [];
@@ -636,94 +633,95 @@ for (const [cx, cz] of [[-1350, -1250], [-1450, -1300], [-1550, -1350], [-2150, 
   const l = glowSprite(RED_LIN, 12, 2); l.position.set(cx, 44, cz); city.add(l);
 }
 
-// ================================================================ the person (rigged humanoid, posed with 2-bone IK)
-const FACE = new THREE.Vector2(0.516, 0.856).normalize(); // toward the ocean
-const personRoot = new THREE.Group(); personRoot.position.copy(PERSON); personRoot.rotation.y = Math.atan2(FACE.x, FACE.y); city.add(personRoot);
-const personLight = new THREE.PointLight(0xff2030, 0, 45, 2); city.add(personLight);
-const rimUniform = { value: 0 };
-let rig = null;
-{
-  const gltf = await new GLTFLoader().loadAsync('models/Xbot.glb');
-  const model = gltf.scene;
-  const mat = new THREE.MeshStandardMaterial({ color: 0x08080a, roughness: 0.55, metalness: 0.05 });
-  mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uRim = rimUniform;
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uRim;')
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n{ float fr = pow(1.0 - clamp(dot(normalize(vNormal), normalize(vViewPosition)), 0.0, 1.0), 3.0); totalEmissiveRadiance += vec3(0.9,0.05,0.1) * fr * uRim; }');
-  };
-  model.traverse(o => { if (o.isMesh) { o.material = mat; o.frustumCulled = false; } });
-  const box = new THREE.Box3().setFromObject(model); const hgt = box.max.y - box.min.y;
-  model.scale.setScalar(1.76 / hgt); model.position.y = -box.min.y * (1.76 / hgt);
-  personRoot.add(model);
-  const mixer = new THREE.AnimationMixer(model);
-  const idle = gltf.animations.find(a => a.name === 'idle'); if (idle) mixer.clipAction(idle).play();
-  const bone = n => model.getObjectByName('mixamorig:' + n) || model.getObjectByName('mixamorig' + n);
-  rig = { model, mixer, L: [bone('LeftArm'), bone('LeftForeArm'), bone('LeftHand')], R: [bone('RightArm'), bone('RightForeArm'), bone('RightHand')], head: bone('Head') };
-}
-const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
-function aimBone(b, child, targetWorld) {
-  b.updateWorldMatrix(true, true);
-  const bp = b.getWorldPosition(new THREE.Vector3()), cp = child.getWorldPosition(new THREE.Vector3());
-  const cur = cp.sub(bp).normalize(), want = targetWorld.clone().sub(bp).normalize();
-  _q.setFromUnitVectors(cur, want);
-  b.getWorldQuaternion(_q2); _q2.premultiply(_q);
-  const pq = b.parent.getWorldQuaternion(new THREE.Quaternion()).invert();
-  b.quaternion.copy(pq.multiply(_q2));
-  b.updateWorldMatrix(false, true);
-}
-function solveArm(chain, target, pole, weight) {
-  if (weight <= 0) return;
-  const [up, fo, hand] = chain;
-  up.updateWorldMatrix(true, true);
-  const S = up.getWorldPosition(new THREE.Vector3()), E0 = fo.getWorldPosition(new THREE.Vector3()), H0 = hand.getWorldPosition(new THREE.Vector3());
-  const L1 = S.distanceTo(E0), L2 = E0.distanceTo(H0);
-  const tgt = H0.clone().lerp(target, weight);
-  const d = Math.min(S.distanceTo(tgt), (L1 + L2) * 0.999);
-  const dir = tgt.clone().sub(S).normalize();
-  const a = (L1 * L1 - L2 * L2 + d * d) / (2 * d); const hgt = Math.sqrt(Math.max(L1 * L1 - a * a, 0));
-  const poleDir = pole.clone().sub(S); poleDir.sub(dir.clone().multiplyScalar(poleDir.dot(dir))).normalize();
-  const E = S.clone().add(dir.clone().multiplyScalar(a)).add(poleDir.multiplyScalar(hgt));
-  aimBone(up, fo, E); aimBone(fo, hand, S.clone().add(dir.multiplyScalar(d)));
-}
-
-// ================================================================ orb, energy streams, trail, impact
+// ================================================================ the orb: born in the sand, rises, then drops back into the ground to start the signal
+const HOVER_Y = 3.0, PEAK_Y = 5.6;             // heights above the sand (metres)
+const ORB_LIGHT = new THREE.PointLight(0xff2030, 0, 70, 2); city.add(ORB_LIGHT);
 const orbCore = glowSprite(0xffffff, 0.5, 3.0), orbHalo = glowSprite(RED_LIN, 2.5, 2.2), orbOuter = glowSprite(RED_LIN, 8, 0.6, TEX_SOFT);
 [orbOuter, orbHalo, orbCore].forEach(s => { s.renderOrder = 5; city.add(s); });
-const faceV3 = V3(FACE.x, 0, FACE.y), sideV3 = V3(-FACE.y, 0, FACE.x);
-const HANDS = PERSON.clone().add(faceV3.clone().multiplyScalar(0.34)).add(V3(0, 1.2, 0));
-const HOVER = PERSON.clone().add(faceV3.clone().multiplyScalar(0.25)).add(V3(0, 3.1, 0));
-const routePts = [HOVER.clone(), PERSON.clone().add(V3(-12, 7, -14))];
-for (const k of route) { const n = nodes[k]; routePts.push(V3(n.x, groundY(n.x, n.z) + 7, n.z)); }
-routePts.pop(); routePts.push(impactPos.clone().add(V3(0, 1.5, 0))); routePts.push(impactPos.clone());
-const orbCurve = new THREE.CatmullRomCurve3(routePts, false, 'centripetal', 0.5);
-const orbLen = orbCurve.getLength();
-const orbS = t => Math.pow(clamp((t - T.launch) / (T.impact - T.launch)), 1.4);
-function orbPos(t) {
-  if (t < T.launch - 0.4) { const k = smoother(T.hover0 - 0.2, T.launch - 0.4, t); return HANDS.clone().lerp(HOVER, k); }
-  if (t < T.launch) return HOVER.clone().add(V3(0, Math.sin((t - T.launch + 0.4) / 0.4 * Math.PI) * 0.12, 0));
-  return orbCurve.getPointAt(Math.min(orbS(t), 1));
+function orbHeight(t) {
+  if (t < T.gatherFull) return 0.12 + (HOVER_Y - 0.12) * Math.pow(smoother(T.gather0 + 0.8, T.gatherFull, t), 1.3);       // seed in the sand swells and lifts
+  if (t < T.launch) { const k = smoother(T.hover0, T.launch - 0.2, t); return HOVER_Y + (PEAK_Y - HOVER_Y) * k + Math.sin((t - T.gatherFull) * 2.2) * 0.06 * (1 - k); } // slow anticipation rise
+  if (t < T.impact) { const s = (t - T.launch) / (T.impact - T.launch); return 0.25 + (PEAK_Y - 0.25) * (1 - s * s); } // plunge
+  return 0.25;
 }
-// energy streams spiralling into the hands (clean light filaments instead of point particles)
+const orbPos = t => ORB.clone().add(V3(0, orbHeight(t), 0));
+
+// light filaments spiralling up out of the sand into the orb (clean strips, not point particles)
+const STREAM_VERT = /* glsl */`
+  uniform float uWidth; uniform vec2 uRes; uniform vec3 uShift; attribute vec3 aPrev; attribute vec3 aNext; attribute float aSide; attribute float aD; attribute float aS;
+  varying float vD; varying float vS; varying float vSide;
+  void main(){ vec3 sh = uShift*aS*aS; mat4 m = projectionMatrix*modelViewMatrix; vec4 c = m*vec4(position+sh,1.); vec4 cp = m*vec4(aPrev+sh,1.); vec4 cn = m*vec4(aNext+sh,1.);
+    vec2 sp = cp.xy/max(cp.w,1e-4), sn = cn.xy/max(cn.w,1e-4); vec2 d = (sn - sp)*uRes; float L = length(d); d = L > 1e-6 ? d/L : vec2(1.,0.);
+    vec2 n = vec2(-d.y, d.x); c.xy += n * aSide * uWidth / uRes * c.w; vD = aD; vS = aS; vSide = aSide; gl_Position = c; }`;
 const STREAMS = [];
-for (let i = 0; i < 26; i++) {
-  const th0 = rng() * Math.PI * 2, el = 0.15 + rng() * 1.1, r0 = 1.4 + rng() * 2.4, spin = (1.2 + rng() * 1.6) * (rng() < 0.5 ? -1 : 1);
+const NSTREAM = 46;
+for (let i = 0; i < NSTREAM; i++) {
+  const th0 = rng() * Math.PI * 2, r0 = 2.6 + rng() * 5.2, spin = (1.0 + rng() * 1.5) * (rng() < 0.5 ? -1 : 1), bulge = 0.2 + rng() * 0.5;
   const pts = [], ss = [];
-  for (let k = 0; k <= 80; k++) {
-    const u = k / 80, e = Math.pow(1 - u, 1.35);
-    const th = th0 + spin * (1 - e) * 2.2 + spin * u * 0.6;
-    const r = r0 * e + 0.02, y = Math.sin(el) * r0 * e * 0.9 + Math.sin(u * Math.PI) * 0.4;
-    pts.push(HANDS.clone().add(V3(Math.cos(th) * r * Math.cos(el * 0.5), y, Math.sin(th) * r * Math.cos(el * 0.5)))); ss.push(u);
+  for (let k = 0; k <= 90; k++) {
+    const u = k / 90, e = Math.pow(1 - u, 1.5);
+    const th = th0 + spin * (1 - e) * 2.4 + spin * u * 0.5;
+    const r = r0 * e + 0.03, y = 0.08 + HOVER_Y * Math.pow(u, 1.15) + Math.sin(u * Math.PI) * bulge;
+    pts.push(ORB.clone().add(V3(Math.cos(th) * r, y, Math.sin(th) * r))); ss.push(u);
   }
   const mat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    uniforms: { uWidth: { value: Math.max(1.2, (1.6 + rng() * 1.6) * SC * 2) }, uRes: U.uRes, uHead: { value: -1 }, uAlpha: { value: 0 } },
-    side: THREE.DoubleSide, vertexShader: STRIP_VERT,
+    uniforms: { uWidth: { value: Math.max(1.6, (2.4 + rng() * 2.4) * SC * 2) }, uRes: U.uRes, uHead: { value: -1 }, uAlpha: { value: 0 }, uShift: { value: new THREE.Vector3() } },
+    side: THREE.DoubleSide, vertexShader: STREAM_VERT,
     fragmentShader: `uniform float uHead; uniform float uAlpha; varying float vS; varying float vSide;
-      void main(){ float d = uHead - vS; if (d < 0.0 || d > 0.45) discard; float k = 1.0 - d/0.45; float e = 1.0 - vSide*vSide;
+      void main(){ float d = uHead - vS; if (d < 0.0 || d > 0.42) discard; float k = 1.0 - d/0.42; float e = 1.0 - vSide*vSide;
         vec3 c = mix(vec3(0.83,0.0,0.05), vec3(1.0,0.75,0.75), pow(k, 6.0)); gl_FragColor = vec4(c * pow(k, 2.2) * e * uAlpha * 2.2, 1.0); }` });
-  const mesh = new THREE.Mesh(buildStrips([{ pts, s: ss }]), mat); mesh.frustumCulled = false; mesh.renderOrder = 6; city.add(mesh);
-  const t0 = lerp(T.gather0, T.gatherFull - 0.7, i / 25) + (rng() - 0.5) * 0.3;
-  STREAMS.push({ mesh, t0, dur: 0.9 + rng() * 0.5 });
+  const mesh = new THREE.Mesh(buildStrips([{ pts, s: ss }]), mat); mesh.frustumCulled = false; mesh.renderOrder = 6; mesh.visible = false; city.add(mesh);
+  STREAMS.push({ mesh, t0: lerp(T.gather0, T.gatherFull - 1.0, i / (NSTREAM - 1)) + (rng() - 0.5) * 0.5, dur: 1.3 + rng() * 0.9 });
 }
+// motes of light drawn up out of the sand
+const moteMat = new THREE.ShaderMaterial({
+  uniforms: { uT: U.uTime, uA: { value: 0 }, uPx: { value: H / 1080 }, uBase: { value: ORB.clone() }, uOrbY: { value: HOVER_Y } },
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  vertexShader: `uniform float uT; uniform float uA; uniform float uPx; uniform vec3 uBase; uniform float uOrbY; attribute vec4 aSeed; varying float vA; varying float vQ;
+    void main(){ float P = 1.3 + aSeed.w*1.4; float q = fract(uT/P + aSeed.z);
+      float r = aSeed.y * pow(1.0 - q, 1.6); float th = aSeed.x + (1.0 - (1.0-q)*(1.0-q)) * (2.0 + aSeed.w*2.0);
+      vec3 p = uBase + vec3(cos(th)*r, 0.05 + pow(q, 1.4)*uOrbY, sin(th)*r);
+      vec4 mv = modelViewMatrix*vec4(p,1.); vA = uA * smoothstep(0.0, 0.12, q) * (1.0 - smoothstep(0.82, 1.0, q)); vQ = q;
+      gl_PointSize = clamp(uPx * (1.3 + 2.4*aSeed.w) * 55.0/(-mv.z), 1.5, uPx*16.0); gl_Position = projectionMatrix*mv; }`,
+  fragmentShader: `varying float vA; varying float vQ; void main(){ float r = length(gl_PointCoord-0.5); float a = smoothstep(0.5,0.0,r); a *= a; vec3 c = mix(vec3(1.0,0.1,0.15), vec3(1.0,0.75,0.75), vQ*vQ); gl_FragColor = vec4(c*a*vA, 1.0); }`
+});
+{
+  const n = 520, g = new THREE.BufferGeometry(); const s = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) { s[i * 4] = rng() * Math.PI * 2; s[i * 4 + 1] = 1.2 + rng() * 6.5; s[i * 4 + 2] = rng(); s[i * 4 + 3] = rng(); }
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3)); g.setAttribute('aSeed', new THREE.BufferAttribute(s, 4));
+  const pts = new THREE.Points(g, moteMat); pts.frustumCulled = false; pts.renderOrder = 6; city.add(pts);
+}
+// sparks thrown up out of the sand at the moment of impact
+const sparkMat = new THREE.ShaderMaterial({
+  uniforms: { uT: U.uTime, uImpact: { value: T.impact }, uPx: { value: H / 1080 }, uBase: { value: ORB.clone() } },
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  vertexShader: `uniform float uT; uniform float uImpact; uniform float uPx; uniform vec3 uBase; attribute vec4 aSeed; varying float vA;
+    void main(){ float tau = max(uT - uImpact, 0.0); float sp = 2.0 + aSeed.y*16.0; float up = 3.0 + aSeed.z*14.0;
+      vec3 p = uBase + vec3(cos(aSeed.x)*sp*tau, 0.3 + up*tau - 4.0*tau*tau, sin(aSeed.x)*sp*tau);
+      vec4 mv = modelViewMatrix*vec4(p,1.); vA = (uT > uImpact ? 1.0 : 0.0) * exp(-tau/(0.45 + aSeed.w*0.5)) * step(0.0, p.y - uBase.y);
+      gl_PointSize = clamp(uPx * (1.0 + 2.5*aSeed.w) * 55.0/(-mv.z), 1.0, uPx*14.0); gl_Position = projectionMatrix*mv; }`,
+  fragmentShader: `varying float vA; void main(){ float r = length(gl_PointCoord-0.5); float a = smoothstep(0.5,0.0,r); a *= a; gl_FragColor = vec4(mix(vec3(1.0,0.1,0.15), vec3(1.0,0.8,0.8), a*a)*a*vA*1.4, 1.0); }`
+});
+{
+  const n = 260, g = new THREE.BufferGeometry(); const s = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) { s[i * 4] = rng() * Math.PI * 2; s[i * 4 + 1] = rng(); s[i * 4 + 2] = rng(); s[i * 4 + 3] = rng(); }
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3)); g.setAttribute('aSeed', new THREE.BufferAttribute(s, 4));
+  const pts = new THREE.Points(g, sparkMat); pts.frustumCulled = false; pts.renderOrder = 6; city.add(pts);
+}
+// glow in the sand with rings contracting into the seed point
+const groundGlowMat = new THREE.ShaderMaterial({
+  uniforms: { uT: U.uTime, uA: { value: 0 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  vertexShader: `varying vec2 vP; void main(){ vP = position.xz; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+  fragmentShader: `uniform float uT; uniform float uA; varying vec2 vP;
+    void main(){ float r = length(vP); float ring = 0.0;
+      for (int i = 0; i < 4; i++) { float ph = fract(uT*0.36 + float(i)*0.25); float rr = mix(6.5, 0.3, ph); float w = 0.05 + 0.022*rr; ring += exp(-pow((r-rr)/w, 2.0)) * sin(3.14159*ph); }
+      float core = exp(-r*r/2.6); float edge = 1.0 - smoothstep(6.5, 8.5, r);
+      vec3 c = vec3(0.831,0.0,0.03)*(ring*0.7 + core*0.55) + vec3(1.0,0.5,0.5)*core*core*0.18;
+      gl_FragColor = vec4(c*edge*uA, 1.0); }`
+});
+const groundGlow = new THREE.Mesh(new THREE.PlaneGeometry(26, 26).rotateX(-Math.PI / 2), groundGlowMat); groundGlow.position.copy(ORB).setY(ORB.y + 0.12); groundGlow.renderOrder = 2; groundGlow.frustumCulled = false; city.add(groundGlow);
+const column = glowSprite(0xff2a3a, 1, 1, TEX_SOFT); column.center.set(0.5, 0.0); column.position.copy(ORB); column.renderOrder = 5; city.add(column);
+// trail while the orb drops
 const NT = 40;
 const tGeo = new THREE.BufferGeometry();
 tGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(NT * 3), 3));
@@ -736,9 +734,9 @@ const trailMat = new THREE.ShaderMaterial({
 });
 const trail = new THREE.Points(tGeo, trailMat); trail.frustumCulled = false; trail.renderOrder = 6; city.add(trail);
 const ringMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.2, 0.08, 0.12), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
-const ring = new THREE.Mesh(new THREE.RingGeometry(0.92, 1, 128).rotateX(-Math.PI / 2), ringMat); ring.position.copy(impactPos).setY(impactPos.y + 0.6); city.add(ring);
-const gatherRingMat = ringMat.clone(); const gatherRing = new THREE.Mesh(new THREE.RingGeometry(0.94, 1, 96).rotateX(-Math.PI / 2), gatherRingMat); gatherRing.position.copy(PERSON); city.add(gatherRing);
-const pillar = glowSprite(0xff4050, 1, 1); pillar.position.copy(impactPos); pillar.center.set(0.5, 0.0); city.add(pillar);
+const ring = new THREE.Mesh(new THREE.RingGeometry(0.92, 1, 128).rotateX(-Math.PI / 2), ringMat); ring.position.copy(ORB).setY(ORB.y + 0.6); city.add(ring);
+const gatherRingMat = ringMat.clone(); const gatherRing = new THREE.Mesh(new THREE.RingGeometry(0.94, 1, 96).rotateX(-Math.PI / 2), gatherRingMat); gatherRing.position.copy(ORB).setY(ORB.y + 0.3); city.add(gatherRing);
+const pillar = glowSprite(0xff4050, 1, 1); pillar.position.copy(ORB); pillar.center.set(0.5, 0.0); city.add(pillar);
 
 // ================================================================ GLOBE
 const globe = new THREE.Scene(); globe.background = new THREE.Color(0, 0, 0);
@@ -831,14 +829,24 @@ const CITIES = {
   ny: [40.71, -74.0], london: [51.5, -0.12], joburg: [-26.2, 28.05], saopaulo: [-23.55, -46.63], mumbai: [19.08, 72.88], dubai: [25.2, 55.27],
   hongkong: [22.32, 114.17], jakarta: [-6.2, 106.85], seoul: [37.57, 126.98], honolulu: [21.31, -157.86], santiago: [-33.45, -70.67], vancouver: [49.28, -123.12],
   manila: [14.6, 120.98], nairobi: [-1.29, 36.82], fiji: [-18.14, 178.44], delhi: [28.61, 77.2], mexico: [19.43, -99.13],
+  bourke: [-30.09, 145.94], mtisa: [-20.73, 139.49], wagga: [-35.12, 147.37],
 };
-const AUS_CITIES = ['newcastle', 'sydney', 'brisbane', 'melbourne', 'canberra', 'tamworth', 'adelaide', 'perth', 'darwin', 'hobart', 'cairns', 'alice', 'townsville', 'broome', 'goldcoast', 'wollongong'];
+const AUS_CITIES = ['newcastle', 'sydney', 'brisbane', 'melbourne', 'canberra', 'tamworth', 'adelaide', 'perth', 'darwin', 'hobart', 'cairns', 'alice', 'townsville', 'broome', 'goldcoast', 'wollongong', 'bourke', 'mtisa', 'wagga'];
 function destPoint(lat, lon, bearing, km) { const d = km / 6371, la = lat * D2R, lo = lon * D2R; const la2 = Math.asin(Math.sin(la) * Math.cos(d) + Math.cos(la) * Math.sin(d) * Math.cos(bearing)); const lo2 = lo + Math.atan2(Math.sin(bearing) * Math.sin(d) * Math.cos(la), Math.cos(d) - Math.sin(la) * Math.sin(la2)); return [la2 / D2R, lo2 / D2R]; }
+function bearingTo(a, b) { const la1 = a[0] * D2R, la2 = b[0] * D2R, dl = (b[1] - a[1]) * D2R; return Math.atan2(Math.sin(dl) * Math.cos(la2), Math.cos(la1) * Math.sin(la2) - Math.sin(la1) * Math.cos(la2) * Math.cos(dl)); }
+// The signal spreads as the left half of the TEDx "x": two arms leave Newcastle towards the north-west (through Darwin) and the
+// south-west (mirror image, through Melbourne). A dense web grows along each arm; the rest of the country only gets a dim web.
+const ARM_KM = T.armKm || 3150;
+const ARM_B = [bearingTo(NEWCASTLE, CITIES.darwin)]; ARM_B.push(3 * Math.PI - ARM_B[0]);
 const web = (() => {
-  const pts = [NEWCASTLE];
-  for (let i = 0; i < 14000 && pts.length < 4200; i++) { const km = 3 * Math.pow(4300 / 3, rng()); const p = destPoint(...NEWCASTLE, rng() * Math.PI * 2, km); if (ausLand(...p)) pts.push(p); }
+  const pts = [NEWCASTLE], cls = [1];
+  for (let i = 0; i < 14000 && pts.length < 620; i++) { const km = 3 * Math.pow(4300 / 3, rng()); const p = destPoint(...NEWCASTLE, rng() * Math.PI * 2, km); if (ausLand(...p)) { pts.push(p); cls.push(km < 70 ? 1 : 0); } }
+  for (const b of ARM_B) for (let i = 0, got = 0; i < 6000 && got < 1150; i++) {
+    const s = 8 + (ARM_KM - 8) * Math.pow(rng(), 1.35), sig = 14 + 0.03 * s, lat = (rng() + rng() + rng() - 1.5) * 2 * sig;
+    const p1 = destPoint(...NEWCASTLE, b, s), p = destPoint(p1[0], p1[1], b + Math.PI / 2, lat);
+    if (ausLand(...p)) { pts.push(p); cls.push(1); got++; } }
   const cityIdx = {};
-  for (const c of AUS_CITIES.slice(1)) { cityIdx[c] = pts.length; pts.push(CITIES[c]); for (let i = 0; i < 70; i++) { const p = destPoint(...CITIES[c], rng() * Math.PI * 2, 2 * Math.pow(90 / 2, rng())); if (ausLand(...p)) pts.push(p); } }
+  for (const c of AUS_CITIES.slice(1)) { cityIdx[c] = pts.length; pts.push(CITIES[c]); cls.push(1); for (let i = 0; i < 70; i++) { const p = destPoint(...CITIES[c], rng() * Math.PI * 2, 2 * Math.pow(90 / 2, rng())); if (ausLand(...p)) { pts.push(p); cls.push(1); } } }
   const n = pts.length; const xy = pts.map(([la, lo]) => [lo * Math.cos(-28 * D2R) * 111.2, la * 111.2]);
   const adj = Array.from({ length: n }, () => []); const E = []; const seen = new Set();
   for (let i = 0; i < n; i++) {
@@ -859,30 +867,56 @@ const web = (() => {
   }
   const d = new Float64Array(n).fill(Infinity); d[0] = 0; const done = new Uint8Array(n);
   for (;;) { let u = -1, best = Infinity; for (let i = 0; i < n; i++) if (!done[i] && d[i] < best) { best = d[i]; u = i; } if (u < 0) break; done[u] = 1; for (const [v, w] of adj[u]) if (d[u] + w < d[v]) d[v] = d[u] + w; }
-  return { pts, E, d };
+  return { pts, E, d, cls };
 })();
 const webMat = new THREE.ShaderMaterial({
   uniforms: { uWidth: { value: 2.6 * SC * 2 }, uRes: U.uRes, uFront: { value: -1 }, uFade: { value: 1 } },
   transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   side: THREE.DoubleSide, vertexShader: STRIP_VERT,
-  fragmentShader: `uniform float uFront; uniform float uFade; varying float vD; varying float vSide;
+  fragmentShader: `uniform float uFront; uniform float uFade; varying float vD; varying float vS; varying float vSide;
     void main(){ float x = uFront - vD; if (x < 0.0) discard; float hw = 2.0 + uFront*0.06; float head = exp(-pow(x/hw, 2.0));
-      float e = 1.0 - vSide*vSide; vec3 c = vec3(0.831,0.0,0.03)*(0.55 + 0.8*exp(-x/(hw*4.0))) + vec3(1.0,0.4,0.4)*head*1.6;
+      float e = 1.0 - vSide*vSide; vec3 c = (vec3(0.831,0.0,0.03)*(0.55 + 0.8*exp(-x/(hw*4.0))) + vec3(1.0,0.4,0.4)*head*1.6) * vS;
       gl_FragColor = vec4(c*e*uFade, 1.0); }`
 });
 {
   const polys = [];
-  for (const [i, j, km] of web.E) { const A = ll(...web.pts[i], 1), B = ll(...web.pts[j], 1); const ang = A.angleTo(B); const n = Math.max(1, Math.ceil(km / 40)); const pts = [], d = [];
-    for (let k = 0; k <= n; k++) { const s = k / n; const v = ang < 1e-7 ? A.clone() : A.clone().multiplyScalar(Math.sin((1 - s) * ang) / Math.sin(ang)).add(B.clone().multiplyScalar(Math.sin(s * ang) / Math.sin(ang))); pts.push(v.normalize().multiplyScalar(R * 1.0004)); d.push(Math.min(web.d[i] + s * km, web.d[j] + (1 - s) * km)); }
-    polys.push({ pts, d }); }
+  for (const [i, j, km] of web.E) { const A = ll(...web.pts[i], 1), B = ll(...web.pts[j], 1); const ang = A.angleTo(B); const n = Math.max(1, Math.ceil(km / 40)); const pts = [], d = [], s = [];
+    const br = Math.max(web.cls[i], web.cls[j]) ? 1.0 : 0.3; // corridor webs bright, background web dim
+    for (let k = 0; k <= n; k++) { const f = k / n; const v = ang < 1e-7 ? A.clone() : A.clone().multiplyScalar(Math.sin((1 - f) * ang) / Math.sin(ang)).add(B.clone().multiplyScalar(Math.sin(f * ang) / Math.sin(ang))); pts.push(v.normalize().multiplyScalar(R * 1.0004)); d.push(Math.min(web.d[i] + f * km, web.d[j] + (1 - f) * km)); s.push(br); }
+    polys.push({ pts, d, s }); }
+  // the two arms of the half-x: straight rays that lead the web, running on over the sea where there is no land
+  for (const b of ARM_B) { const pts = [], d = [], s = [];
+    for (let km = 0; km <= ARM_KM; km += 30) { pts.push(ll(...destPoint(...NEWCASTLE, b, km), R * 1.0008)); d.push(km * 0.82); s.push(1.5); }
+    polys.push({ pts, d, s }); }
   const m = new THREE.Mesh(buildStrips(polys), webMat); m.frustumCulled = false; m.renderOrder = 2; globe.add(m);
+}
+// soft light ribbons along the two arms, over land and sea alike, so the shape of the half-x reads even where there is no land to carry the web
+const armMat = new THREE.ShaderMaterial({
+  uniforms: { uFront: webMat.uniforms.uFront, uFade: webMat.uniforms.uFade, uArm: { value: 0 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  vertexShader: `attribute float aD; attribute float aU; varying float vD; varying float vU; void main(){ vD = aD; vU = aU; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+  fragmentShader: `uniform float uFront; uniform float uFade; uniform float uArm; varying float vD; varying float vU;
+    void main(){ float x = uFront - vD; if (x < 0.0 || uArm <= 0.0) discard; float e = 1.0 - vU*vU; e *= e; float hw = 8.0 + uFront*0.05; float head = exp(-pow(x/hw, 2.0));
+      vec3 c = vec3(0.831,0.0,0.03)*(0.05 + 0.34*e) + vec3(1.0,0.35,0.35)*head*e*0.9; gl_FragColor = vec4(c*uFade*uArm, 1.0); }`
+});
+{
+  const pos = [], dd = [], uu = [], idx = []; const half = (T.armHalfKm || 80) / 6371;
+  for (const b of ARM_B) { const base = pos.length / 3;
+    for (let km = 0, k = 0; km <= ARM_KM; km += 20, k++) {
+      const c = ll(...destPoint(...NEWCASTLE, b, km), 1), c2 = ll(...destPoint(...NEWCASTLE, b, km + 10), 1), c0 = ll(...destPoint(...NEWCASTLE, b, Math.max(km - 10, 0)), 1);
+      const lat = new THREE.Vector3().crossVectors(c, c2.clone().sub(c0)).normalize().multiplyScalar(Math.tan(half));
+      for (const sd of [-1, 1]) { const v = c.clone().add(lat.clone().multiplyScalar(sd)).normalize().multiplyScalar(R * 1.0009); pos.push(v.x, v.y, v.z); dd.push(km * 0.82); uu.push(sd); }
+      if (km < ARM_KM) { const i = base + k * 2; idx.push(i, i + 1, i + 2, i + 1, i + 3, i + 2); }
+    } }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aD', new THREE.Float32BufferAttribute(dd, 1)); g.setAttribute('aU', new THREE.Float32BufferAttribute(uu, 1)); g.setIndex(idx);
+  const m = new THREE.Mesh(g, armMat); m.frustumCulled = false; m.renderOrder = 1; globe.add(m);
 }
 
 // ================================================================ camera + fronts
 const ALT_KEYS = T.alt.map(([t, a]) => [t, Math.log(a)]);
 function altAt(t) { return Math.exp(track(ALT_KEYS, t)); }
 const webFront = t => t < T.web0 ? -1 : 0.55 * altAt(t) / 1000;
-const cityFront = t => { const tau = (t - T.impact) * T.frontSpeed; return tau <= 0 ? -1e9 : Math.max(150 * tau + 4 * Math.pow(tau, 4.2), t > T.zoom0 ? 0.55 * altAt(t) : 0); };
+// street front: metres from the orb along the streets. front = a*dt + b*dt^p, locked to what the camera can see once the zoom-out is under way
+const cityFront = t => { const dt = t - T.impact; if (dt <= 0) return -1e9; const [a, b, p] = T.front; return Math.max(a * dt + b * Math.pow(dt, p), t > T.zoom0 ? 0.55 * altAt(t) : 0) - IMPACT_OFF; };
 const arrival = {};
 for (const c of AUS_CITIES) { let best = 0, bd = Infinity; web.pts.forEach((p, i) => { const d = gcKm(p, CITIES[c]); if (d < bd) { bd = d; best = i; } }); const need = web.d[best] + bd; let t = T.web0; while (t < DURATION && webFront(t) < need) t += 0.01; arrival[c] = t; }
 arrival.newcastle = T.xfade[0];
@@ -897,7 +931,8 @@ const arcMat = () => new THREE.ShaderMaterial({
       float e = 1.0 - vSide*vSide; vec3 col = (vec3(0.831,0.01,0.05)*trail + vec3(1.0,0.6,0.6)*head*2.2) * e * uFade; gl_FragColor = vec4(col, 1.0); }`
 });
 const arcs = [];
-const T_WORLD = (() => { let t = T.web0; while (t < DURATION && altAt(t) < 3.2e6) t += 0.01; return t; })();
+// world arcs wait until the arms of the half-x have run nearly to their tips (the web has reached the coasts)
+const T_WORLD = (() => { let t = T.web0; while (t < DURATION && webFront(t) < (T.worldFrac || 0.92) * ARM_KM) t += 0.01; return t; })();
 {
   const pending = HOPS.slice();
   while (pending.length) { const i = pending.findIndex(([a]) => a in arrival); if (i < 0) break; const [a, b] = pending.splice(i, 1)[0];
@@ -916,65 +951,48 @@ GU.uNCity.value = Math.min(cityKeys.length, 48);
 const citySprites = cityKeys.map(k => { const s = glowSprite(RED_LIN, 1, 2.0); s.position.copy(ll(...CITIES[k], R * 1.001)); s.renderOrder = 4; globe.add(s); return { k, s }; });
 
 const CITY_CENTRE = V3(-900, 0, 150);
-const NE = V3(0.67, 0, -0.74).normalize();
-const chest = PERSON.clone().add(V3(0, 1.35, 0));
-function personOrbit(t) { // profile view with Nobbys lighthouse behind; slow orbit while the orb forms
-  const t0 = CUT === 'long' ? T.droneEnd : 0, t1 = T.launch + 0.4;
-  const k = smoother(t0, t1, t);
-  const baseAng = Math.atan2(-NE.z, -NE.x);
-  const ang = baseAng + lerp(CUT === 'long' ? 0.0 : 0.55, -0.32, k);
-  const r = lerp(CUT === 'long' ? 9 : 6.5, 5.6, k);
-  const pos = chest.clone().add(V3(Math.cos(ang) * r, lerp(0.15, -0.25, k), Math.sin(ang) * r));
-  const tgt = chest.clone().add(V3(0, 0.25 + smooth(T.hover0 - 0.3, T.launch, t) * 1.2, 0)).add(NE.clone().multiplyScalar(1.2));
-  return { pos, tgt, fov: 38 };
+const CAMDIR = V3(0.995, 0, -0.1).normalize();  // from the orb back out over the bay: the glide ends on this line, arriving from the east over the water
+// ---- shot 1: one slow glide in from the sea. The camera always looks along its own flight path (no pans, no turns),
+// drifts past Nobbys lighthouse, sweeps round the seaward side of Fort Scratchley and settles in front of the orb on Newcastle Beach.
+const ORB_AIM = ORB.clone().add(V3(0, 2.6, 0));
+const ALT0 = 1.5;                                                // camera height above the aim point when the glide ends
+const END_D = 14.5;                                              // ...and its distance from the orb
+const END_POS = ORB_AIM.clone().add(CAMDIR.clone().multiplyScalar(END_D)).add(V3(0, ALT0, 0));
+const onFinal = (d, h) => END_POS.clone().add(CAMDIR.clone().multiplyScalar(d)).setY(h);  // a point d metres back along the final run, at absolute height h
+const APP_PTS = [ // in from the sea past Nobbys, down the seaward side of the headland past Fort Scratchley, round the Ocean Baths and across the bay to the beach
+  V3(1450, 102, -1420), V3(1290, 98, -1330), V3(1140, 92, -1245), V3(930, 88, -1040), V3(750, 82, -840), V3(630, 76, -640),
+  V3(585, 70, -450), V3(545, 62, -280), V3(510, 54, -130), onFinal(470, 40), onFinal(300, 26), onFinal(170, 17), onFinal(80, 11), onFinal(30, 7), END_POS.clone(),
+];
+const appCurve = new THREE.CatmullRomCurve3(APP_PTS, false, 'centripetal');
+const appLen = appCurve.getLength();
+const LOOK_AHEAD = 240; // metres of flight path the camera looks ahead along
+// flight timing from a velocity profile: ease up over appRamp[0] s, cruise, then a long ease down to a stop over appRamp[1] s before approachEnd
+const APP_TAB = (() => { const n = Math.max(1, Math.round(T.approachEnd * 200)), tab = new Float64Array(n + 1); const [r0, r1] = T.appRamp || [4, 6]; let acc = 0;
+  for (let i = 1; i <= n; i++) { const t = i / 200; acc += smoother(0, r0, t) * (1 - smoother(T.approachEnd - r1, T.approachEnd, t)); tab[i] = acc; }
+  for (let i = 0; i <= n; i++) tab[i] /= acc; return tab; })();
+function appU(t) { const n = APP_TAB.length - 1, x = clamp(t / T.approachEnd) * n, i = Math.min(Math.floor(x), n - 1); return lerp(APP_TAB[i], APP_TAB[i + 1], x - i); }
+function approachShot(t) {
+  const u = appU(t);
+  const pos = appCurve.getPointAt(u);
+  const uu = u + LOOK_AHEAD / appLen;
+  const ahead = uu <= 1 ? appCurve.getPointAt(uu) : END_POS.clone().add(appCurve.getTangentAt(1).multiplyScalar((uu - 1) * appLen));
+  ahead.y -= 10;
+  const tgt = ahead.lerp(ORB_AIM, smoother(T.approachEnd - 3.4, T.approachEnd, t));
+  return { pos, tgt, fov: 40 };
 }
-const DRONE = CUT === 'long' ? (() => {
-  const e = personOrbit(T.droneEnd);
-  const L = NOB.clone().add(V3(0, 9, 0));
-  const P = [[0.0, V3(1195, 40, -1190)], [1.6, V3(1020, 62, -990)], [3.0, V3(760, 80, -720)], [4.4, V3(470, 65, -330)], [5.9, V3(120, 24, -10)],
-    [7.0, PERSON.clone().add(V3(0.52 * 14, 4, 0.86 * 14))], [T.droneEnd, e.pos]];
-  const G = [[0.0, L], [1.6, NOB.clone().add(V3(0, 4, 0))], [3.0, V3(412, 30, -522)], [4.4, V3(20, 5, -60)], [5.9, chest.clone()], [7.0, chest.clone()], [T.droneEnd, e.tgt]];
-  return { P, G };
-})() : null;
-function shotStart(t) {
-  if (DRONE && t < T.droneEnd) return { pos: trackV(DRONE.P, t), tgt: trackV(DRONE.G, t), fov: 40 };
-  return personOrbit(t);
+// ---- shot 2: a single continuous rise from the beach to orbit height. Height comes from the `alt` keys; the tilt, the swing round
+// from the north-east to the south and the drift of the aim point from the orb to the city centre are all driven by that height.
+const PHI_KEYS = [[Math.log(ALT0), Math.atan(END_D / ALT0) / D2R], [Math.log(8), 77], [Math.log(30), 67], [Math.log(120), 54], [Math.log(600), 36], [Math.log(4000), 12], [Math.log(40000), 8]];
+const AZ0 = Math.atan2(CAMDIR.z, CAMDIR.x), AZ1 = Math.PI / 2; // swings east over the sea, then round to the south (north-up, as the globe expects)
+function riseShot(t) {
+  const V = altAt(t), lv = Math.log(V);
+  const D = V * Math.tan(track(PHI_KEYS, lv) * D2R);
+  const aimFar = V3(-700, 0, -150).lerp(CITY_CENTRE, smoother(Math.log(3000), Math.log(25000), lv));
+  const tgt = ORB_AIM.clone().lerp(aimFar, smoother(Math.log(12), Math.log(6000), lv));
+  const azK = smoother(Math.log(10), Math.log(6000), lv), az = lerp(AZ0, AZ1, azK);
+  return { pos: tgt.clone().add(V3(Math.cos(az) * D, V, Math.sin(az) * D)), tgt, fov: lerp(40, 44, azK) };
 }
-function chaseAt(t) {
-  const s = orbS(t) * orbLen, back = 18;
-  let pB;
-  if (s >= back) pB = orbCurve.getPointAt((s - back) / orbLen);
-  else { const p0 = orbCurve.getPointAt(0), tan = orbCurve.getTangentAt(0); pB = p0.clone().sub(tan.multiplyScalar(back - s)); }
-  const pA = orbCurve.getPointAt(Math.min(s + 14, orbLen) / orbLen);
-  return { pos: pB.add(V3(0, 11, 0)), tgt: pA.lerp(orbPos(t), 0.6), fov: 50 };
-}
-function shotChase(t) {
-  if (t <= T.impact) return chaseAt(t);
-  const a = chaseAt(T.impact), b = chaseAt(T.impact - 0.05);
-  const v = a.pos.clone().sub(b.pos).multiplyScalar(1 / 0.05);
-  const k = 0.35 * (1 - Math.exp(-(t - T.impact) / 0.35));
-  return { pos: a.pos.clone().add(v.multiplyScalar(k)), tgt: impactPos.clone(), fov: 46 };
-}
-function shotCrane(t) {
-  const k = smoother(T.impact, T.craneEnd, t);
-  const r = Math.exp(lerp(Math.log(45), Math.log(1250), k));
-  const el = lerp(24, 60, k) * D2R, az = lerp(35, 55, k) * D2R;
-  const tgt = impactPos.clone().lerp(V3(-700, 0, -150), smooth(T.impact + 0.3, T.craneEnd, t));
-  return { pos: tgt.clone().add(V3(Math.cos(el) * Math.cos(az) * r, Math.sin(el) * r, Math.cos(el) * Math.sin(az) * r)), tgt, fov: 44 };
-}
-function shotZoom(t) {
-  const A = altAt(t);
-  const tgt = V3(-700, 0, -150).lerp(CITY_CENTRE, smooth(T.zoom0, T.xfade[0], t));
-  return { pos: tgt.clone().add(V3(0, A, A * Math.tan(8 * D2R))), tgt, fov: 44 };
-}
-const blendShot = (a, b, w) => ({ pos: a.pos.clone().lerp(b.pos, w), tgt: a.tgt.clone().lerp(b.tgt, w), fov: lerp(a.fov, b.fov, w) });
-function cityShot(t) {
-  let s = shotStart(t);
-  if (t > T.launch - 0.05) s = blendShot(s, shotChase(t), smoother(T.launch - 0.05, T.launch + 0.75 * Math.min(1, (T.impact - T.launch) / 2.5), t));
-  if (t > T.impact + 0.05) s = blendShot(s, shotCrane(t), smoother(T.impact + 0.05, T.impact + 1.2 / Math.sqrt(T.frontSpeed), t));
-  if (t > T.zoom0 - 0.1) s = blendShot(s, shotZoom(t), smoother(T.zoom0 - 0.1, T.zoom0 + 0.4, t));
-  return s;
-}
+const cityShot = t => window.__camOverride || (t < T.approachEnd ? approachShot(t) : riseShot(t));
 function globeShot(t) {
   const lat = track(T.globeLat, t), lon = track(T.globeLon, t);
   const altU = altAt(t) / 1000 * KM;
@@ -1063,44 +1081,34 @@ function frame(t) {
   U.uWidthScale.value = Math.max(1, camH / 260);
   sky.position.copy(cityCam.position); sky.scale.setScalar(cityCam.far * 0.8 / 1000);
   // ---------------- orb
-  const op = orbPos(t);
-  const formed = smooth(T.gather0 + 0.4, T.gatherFull, t);
-  let oi = formed * (1 + 0.2 * Math.sin(t * 9.0) * (1 - smooth(T.hover0, T.launch, t)));
-  oi += 0.8 * Math.exp(-Math.pow((t - T.launch) / 0.08, 2));
+  const op = orbPos(t), oy = orbHeight(t);
+  const formed = smooth(T.gather0 + 0.6, T.gatherFull, t);
+  const anticip = smooth(T.hover0, T.launch, t);
   const afterImpact = t - T.impact;
-  if (afterImpact > 0) oi = 1.6 * Math.exp(-afterImpact / 0.1);
+  let oi = formed * (1 + 0.16 * Math.sin(t * 9.0) * (1 - anticip) + 0.22 * anticip * Math.sin(t * 15.0));
+  oi += 0.8 * Math.exp(-Math.pow((t - T.launch) / 0.08, 2));
+  if (afterImpact > 0) oi = 1.8 * Math.exp(-afterImpact / 0.14);
   U.uOrbPos.value.copy(op); U.uOrbI.value = oi;
-  const flying = t > T.launch && t < T.impact;
-  const sz = flying ? lerp(1, 2.6, smooth(T.launch, T.launch + 0.8, t)) : 1;
-  const coreS = (0.08 + 0.38 * formed) * sz;
+  const sz = 1;
+  const coreS = 0.1 + 0.85 * formed;
   for (const s of [orbCore, orbHalo, orbOuter]) s.position.copy(op);
   orbCore.scale.setScalar(coreS * (afterImpact > 0 ? 1 + afterImpact * 8 : 1)); orbHalo.scale.setScalar(coreS * 4); orbOuter.scale.setScalar(coreS * 9 * (afterImpact > 0 ? 1 + afterImpact * 6 : 1));
   const vis = Math.min(oi, 3); orbCore.material.opacity = clamp(vis); orbHalo.material.opacity = clamp(vis); orbOuter.material.opacity = clamp(vis * 0.8);
-  personLight.position.copy(op); personLight.intensity = 30 * oi;
-  rimUniform.value = 0.12 + 0.5 * formed * (t < T.launch + 0.6 ? 1 : Math.exp(-(t - T.launch - 0.6) / 0.6));
-  for (const s of STREAMS) { const p = (t - s.t0) / s.dur; s.mesh.visible = p > 0 && p < 1.45; s.mesh.material.uniforms.uHead.value = p; s.mesh.material.uniforms.uAlpha.value = smooth(0, 0.15, p) * (1 - smooth(1.2, 1.45, p)); }
-  const gr = t - T.gatherFull, lr = t - T.launch;
-  if (gr > 0 && gr < 1.2) { gatherRing.scale.setScalar(0.5 + gr * 14); gatherRingMat.opacity = 0.9 * Math.exp(-gr / 0.35); gatherRing.position.y = op.y - 0.2; }
-  else if (lr > 0 && lr < 1.2) { gatherRing.scale.setScalar(0.5 + lr * 24); gatherRingMat.opacity = 0.8 * Math.exp(-lr / 0.3); gatherRing.position.y = HOVER.y; }
-  else gatherRingMat.opacity = 0;
-  // person pose
-  if (rig) {
-    rig.mixer.setTime(Math.max(t, 0) % 10);
-    rig.model.updateMatrixWorld(true);
-    const reach = smoother(T.gather0 + 0.2, T.gather0 + 1.3, t) * (1 - smoother(T.launch + 0.3, T.launch + 1.6, t));
-    const raise = smoother(T.hover0 - 0.3, T.launch, t) * (1 - smoother(T.launch + 0.2, T.launch + 1.6, t));
-    const target = op.clone().lerp(HANDS, 1 - raise * 0.85);
-    solveArm(rig.L, target.clone().add(sideV3.clone().multiplyScalar(-0.07)), PERSON.clone().add(sideV3.clone().multiplyScalar(-1.2)).add(V3(0, 0.6, 0)), reach);
-    solveArm(rig.R, target.clone().add(sideV3.clone().multiplyScalar(0.07)), PERSON.clone().add(sideV3.clone().multiplyScalar(1.2)).add(V3(0, 0.6, 0)), reach);
-    const look = t < T.launch ? op.clone() : op.clone().lerp(orbPos(T.launch + 0.35), 1 - smooth(T.launch, T.launch + 0.8, t) * 0.6);
-    const hw = smooth(T.gather0, T.gather0 + 1, t);
-    if (hw > 0 && rig.head) { const hb = rig.head; hb.updateWorldMatrix(true, false); const hp = hb.getWorldPosition(new THREE.Vector3()); const fwd = faceV3.clone(); const want = look.clone().sub(hp).normalize(); const q = new THREE.Quaternion().setFromUnitVectors(fwd, fwd.clone().lerp(want, 0.55 * hw).normalize());
-      const wq = hb.getWorldQuaternion(new THREE.Quaternion()).premultiply(q); hb.quaternion.copy(hb.parent.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(wq)); }
-  }
-  // trail
+  ORB_LIGHT.position.copy(op); ORB_LIGHT.intensity = 60 * oi;
+  // filaments and motes drawn up out of the sand; glow, contracting rings and a thin column of light on the ground
+  const shift = V3(0, oy - HOVER_Y, 0);
+  for (const s of STREAMS) { const p = (t - s.t0) / s.dur; s.mesh.visible = p > 0 && p < 1.45; const u = s.mesh.material.uniforms; u.uHead.value = p; u.uShift.value.copy(shift); u.uAlpha.value = smooth(0, 0.15, p) * (1 - smooth(1.2, 1.45, p)); }
+  moteMat.uniforms.uA.value = smooth(T.gather0, T.gather0 + 0.9, t) * (1 - smooth(T.gatherFull + 0.2, T.gatherFull + 1.2, t));
+  moteMat.uniforms.uOrbY.value = oy;
+  groundGlowMat.uniforms.uA.value = smooth(T.gather0, T.gather0 + 2.0, t) * (afterImpact > 0 ? Math.exp(-afterImpact / 0.6) : 1) * (0.75 + 0.25 * formed) + (afterImpact > 0 ? 2.2 * Math.exp(-afterImpact / 0.25) : 0);
+  column.scale.set(0.8 + 0.6 * formed, Math.max(oy * 1.05, 0.01), 1);
+  column.material.opacity = 0.42 * formed * (t < T.impact ? 1 : Math.exp(-afterImpact / 0.2));
+  const gr = t - T.gatherFull;
+  if (gr > 0 && gr < 1.6) { gatherRing.scale.setScalar(0.5 + gr * 8); gatherRingMat.opacity = 0.5 * Math.exp(-gr / 0.4); } else gatherRingMat.opacity = 0;
+  // trail while the orb drops
   const tp = tGeo.attributes.position.array, ta = tGeo.attributes.aA.array, ts = tGeo.attributes.aS.array;
   for (let i = 0; i < NT; i++) {
-    const tt = Math.min(t, T.impact) - i * 0.011 * Math.min(1, (T.impact - T.launch) / 3);
+    const tt = Math.min(t, T.impact) - i * 0.012;
     const q = orbPos(Math.max(tt, 0)); tp[i * 3] = q.x; tp[i * 3 + 1] = q.y; tp[i * 3 + 2] = q.z;
     ta[i] = (tt > T.launch && t < T.impact + 0.25 ? 1 : 0) * Math.pow(1 - i / NT, 1.5) * (t > T.impact ? Math.exp(-(t - T.impact) / 0.08) : 1);
     ts[i] = (3.2 * (1 - i / NT) + 0.5) * sz;
@@ -1108,7 +1116,7 @@ function frame(t) {
   tGeo.attributes.position.needsUpdate = true; tGeo.attributes.aA.needsUpdate = true; tGeo.attributes.aS.needsUpdate = true;
   U.uFront.value = cityFront(t);
   const tau = t - T.impact;
-  if (tau > 0) { const rr = 3 + 420 * (1 - Math.exp(-tau / 0.55)); ring.scale.setScalar(rr); ringMat.opacity = Math.exp(-tau / 0.5); pillar.scale.set(4 + tau * 8, 60 * Math.exp(-tau / 0.35), 1); pillar.material.opacity = 0.6 * Math.exp(-tau / 0.25); }
+  if (tau > 0) { const rr = 3 + 320 * (1 - Math.exp(-tau / 0.8)); ring.scale.setScalar(rr); ringMat.opacity = Math.exp(-tau / 0.6); pillar.scale.set(2 + tau * 5, 26 * Math.exp(-tau / 0.3), 1); pillar.material.opacity = 0.6 * Math.exp(-tau / 0.25); }
   else { ringMat.opacity = 0; pillar.material.opacity = 0; }
   beam.rotation.y = 1.4 + t * 0.85;
   if (window.__flag) { const p = window.__flag.geometry.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i) + 2; p.setZ(i, Math.sin(x * 1.6 - t * 6) * 0.25 * (x / 4)); } p.needsUpdate = true; }
@@ -1123,6 +1131,7 @@ function frame(t) {
   const dim = 1 - 0.72 * smoother(T.dim[0], T.dim[1], t);
   GU.uBright.value = dim;
   atmoMat.uniforms.uA.value = smooth(T.web0 + 0.9, T.web0 + 1.9, t) * dim * 0.6;
+  armMat.uniforms.uArm.value = smoother(Math.log(1.5e6), Math.log(4e6), Math.log(altAt(t)));
   webMat.uniforms.uFront.value = webFront(t); webMat.uniforms.uFade.value = dim;
   webMat.uniforms.uWidth.value = Math.max(1.8, (2.4 + 1.6 * (1 - smooth(T.web0 + 0.5, T.web0 + 2.5, t))) * SC * 2);
   const camDist = p => globeCam.position.distanceTo(p);
@@ -1183,18 +1192,21 @@ function frame(t) {
     const lk = smoother(T.logo[0], T.logo[1], t);
     logoEl.style.opacity = lk; logoEl.style.transform = `translateX(-50%) translateY(${(1 - lk) * -30 * SC}px)`; logoEl.style.filter = `blur(${(1 - lk) * 10 * SC}px)`;
   }
-  fadeEl.style.opacity = 1 - smooth(T.fadeIn[0], T.fadeIn[1], t);
+  // outro: the planet and everything behind the title fade out first (leaving the text and the red dot), then the text fades to black
+  const bgOut = T.bgOut || [1e9, 1e9 + 1], fadeOut = T.fadeOut || [1e9, 1e9 + 1];
+  renderer.domElement.style.opacity = 1 - smoother(bgOut[0], bgOut[1], t);
+  fadeEl.style.opacity = Math.max(1 - smooth(T.fadeIn[0], T.fadeIn[1], t), smoother(fadeOut[0], fadeOut[1], t));
 }
 
 // events for the sound design
-window.EVENTS = { cut: CUT, T, arrivals: Object.fromEntries(Object.entries(arrival).map(([k, v]) => [k, +v.toFixed(3)])), arcs: arcs.map(a => ({ a: a.a, b: a.b, t0: +a.t0.toFixed(3), t1: +(a.t0 + a.dur).toFixed(3) })) };
+window.EVENTS = { cut: CUT, T, tWorld: +T_WORLD.toFixed(3), impactOff: +IMPACT_OFF.toFixed(1), arrivals: Object.fromEntries(Object.entries(arrival).map(([k, v]) => [k, +v.toFixed(3)])), arcs: arcs.map(a => ({ a: a.a, b: a.b, t0: +a.t0.toFixed(3), t1: +(a.t0 + a.dur).toFixed(3) })) };
 window.renderFrame = async (t) => { frame(t); await new Promise(r => requestAnimationFrame(() => r())); return true; };
 window.frame = frame; window.DURATION = DURATION;
-window.__probe = { isLand, groundY, terrainH, sandSoft, isSand, PERSON, chest, cityShot };
-window.__dbg = { THREE, renderer, city, cityCam, globe, globeCam, composer, dual, U };
+window.__probe = { isLand, groundY, terrainH, sandSoft, isSand, ORB, cityShot, appCurve, appLen, appU, altAt, NOB, FORT };
+window.__dbg = { THREE, renderer, city, cityCam, globe, globeCam, composer, dual, U, TL: T, trackFn: track };
 await document.fonts.load(`700 ${FONT_PX}px "Bricolage Grotesque"`);
 await new Promise(r => { if (logoEl.complete) r(); else logoEl.onload = r; });
 layoutTitle();
 frame(0);
 window.READY = true;
-console.log('ready', CUT, 'nodes', nodes.length, 'real', realCount, 'edges', edges.length, 'bld', bld.length, 'route', route.length, 'orbLen', orbLen.toFixed(0), 'web', web.pts.length, web.E.length, 'maxDist', maxDist.toFixed(0));
+console.log('ready', CUT, 'nodes', nodes.length, 'real', realCount, 'edges', edges.length, 'bld', bld.length, 'appLen', appLen.toFixed(0), 'web', web.pts.length, web.E.length, 'maxDist', maxDist.toFixed(0));
